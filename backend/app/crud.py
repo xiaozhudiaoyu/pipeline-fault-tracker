@@ -22,6 +22,7 @@ from .exceptions import (
     FaultNotFoundError,
     HandlingNoteRequiredError,
     InvalidTransitionError,
+    PipelineCodeDuplicateError,
     PipelineNotFoundError,
 )
 from .models import FaultStatus, Pipeline, PipelineFault
@@ -46,7 +47,12 @@ def get_pipeline(db: Session, pipeline_id: int) -> Pipeline:
 
 
 def create_pipeline(db: Session, data: schemas.PipelineCreate) -> Pipeline:
-    """新增流水线（供 seed 脚本初始化主数据使用）。"""
+    """新增流水线，编码重复则抛 PipelineCodeDuplicateError（409）。"""
+    # 先查编码唯一性，给出明确的业务错误（而非数据库层 IntegrityError 500）
+    existing = db.scalar(select(Pipeline).where(Pipeline.code == data.code))
+    if existing is not None:
+        raise PipelineCodeDuplicateError(data.code)
+
     pipeline = Pipeline(**data.model_dump())
     db.add(pipeline)
     db.commit()

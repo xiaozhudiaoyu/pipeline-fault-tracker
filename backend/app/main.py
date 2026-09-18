@@ -53,7 +53,7 @@ app = FastAPI(
     lifespan=lifespan,
     # OpenAPI 文档分组说明（name 必须与各 router 的 tags 一字不差）
     openapi_tags=[
-        {"name": "pipelines", "description": "流水线主数据：列表查询（供故障登记与筛选下拉使用）。"},
+        {"name": "pipelines", "description": "流水线主数据：列表查询与创建。"},
         {"name": "faults", "description": "故障记录：登记、查询（按流水线/状态筛选）、详情、状态流转。"},
     ],
 )

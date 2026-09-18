@@ -57,6 +57,20 @@ class PipelineNotFoundError(AppError):
         )
 
 
+class PipelineCodeDuplicateError(AppError):
+    """409：流水线编码已存在（code 字段全表唯一）。"""
+
+    status_code = status.HTTP_409_CONFLICT
+    code = "pipeline_code_duplicate"
+    default_message = "流水线编码已存在"
+
+    def __init__(self, code: str) -> None:
+        super().__init__(
+            f"编码 '{code}' 已被占用，请更换",
+            details=[{"field": "body.code", "type": "duplicate", "message": f"'{code}' 已存在"}],
+        )
+
+
 class FaultNotFoundError(AppError):
     """404：故障记录不存在。把 id 拼进文案，比"not found"对调试友好。"""
 

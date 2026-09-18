@@ -82,3 +82,19 @@ export const FAULT_STATUS_OPTIONS: { value: FaultStatus; label: string }[] = [
   { value: 'processing', label: FAULT_STATUS_META.processing.label },
   { value: 'done', label: FAULT_STATUS_META.done.label },
 ]
+
+// 状态机合法流转表：镜像后端 crud.transition_fault 的流转矩阵（后端是最终裁判，前端仅用于 UX——
+// 只把「当前状态下允许的流转」渲染成按钮，避免用户点了才被 409 拒绝）。
+//   pending    → processing（说明可选） / done（说明必填）
+//   processing → pending（回退，说明可选） / done（说明必填）
+//   done       → 终态不可逆（空数组，不渲染任何流转按钮）
+export const ALLOWED_TRANSITIONS: Record<FaultStatus, FaultStatus[]> = {
+  pending: ['processing', 'done'],
+  processing: ['pending', 'done'],
+  done: [],
+}
+
+// 目标状态是否需要必填处理说明（对应后端 HandlingNoteRequiredError：target=done 时 handling_note 必填）
+export function isNoteRequired(target: FaultStatus): boolean {
+  return target === 'done'
+}

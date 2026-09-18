@@ -1,0 +1,26 @@
+/* 全局基础样式：只做最小重置与应用级默认（字体 / 背景 / 根容器高度）。
+   组件级样式一律写在各 .vue 的 <style scoped> 内，避免全局污染。
+   Element Plus 自带组件样式已在 main.ts 引入（element-plus/dist/index.css），此处不重复。 */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: 'Helvetica Neue', Helvetica, 'PingFang SC', 'Hiragino Sans GB',
+    'Microsoft YaHei', Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  color: #303133;
+  background: #f5f7fa;
+}

@@ -10,7 +10,7 @@
 | 日期时间 | 事件 | 包数变化 | 证据 |
 |---|---|---|---|
 | _待首次安装后填写_ | backend：`pip install -r requirements.txt`（FastAPI / SQLAlchemy 2 / Pydantic 2 / uvicorn 链） | 0 → N | `dist-info` 时间戳 + `pip freeze` |
-| _待首次安装后填写_ | frontend：`npm install`（Vue 3.4 / Vite 4.5 / Element Plus 2.5 / TanStack Query v4 / Zod 3 链） | 0 → M | `package-lock.json` + `npm ls --depth=0` |
+| 2026-09-18 | frontend：`npm install`（Vue 3.4 / Vite 4.5 / Element Plus 2.5 / TanStack Query v4 / Zod 3 链） | 0 → 75 | `package-lock.json` + `npm ls --depth=0`（见「四」） |
 
 ## 二、版本锁定决策（2026-09-18）
 
@@ -48,6 +48,29 @@
 ## 三、待补章节（安装后填写）
 
 - [ ] backend 首批安装：包数、`dist-info` 时间戳、`pip freeze` 快照、`pip check` 结果
-- [ ] frontend 首批安装：包数、`npm ls --depth=0` 快照、`package-lock.json` 提交哈希
+- [x] frontend 首批安装：见「四、frontend 首批安装记录（2026-09-18）」
 - [ ] 锁文件生成：`requirements.lock.txt` / `package-lock.json` 的生成命令与提交
 - [ ] 后续任何增删：按 python_learn 台账风格逐节记录
+
+## 四、frontend 首批安装记录（2026-09-18）
+
+- **环境**：Node v16.20.2 / npm 8.3.0；registry `https://registry.npmmirror.com/`
+- **命令**：`npm install` → `added 75 packages`，**无 ERESOLVE 冲突**
+- **顶层依赖实测版本**（`npm ls --depth=0`，全部命中「二、版本锁定决策」窗口）：
+
+  | 包 | 实测版本 | 锁定窗口 | 命中 |
+  |---|---|---|---|
+  | vue | 3.4.38 | <3.5 | ✓ |
+  | vue-router | 4.2.5 | ^4.2 | ✓ |
+  | element-plus | 2.5.6 | <2.7 | ✓ |
+  | @tanstack/vue-query | 4.36.2 | <5.0 | ✓ |
+  | zod | 3.22.5 | ^3.22 | ✓ |
+  | vite | 4.5.14 | <5.0 | ✓ |
+  | @vitejs/plugin-vue | 4.6.2 | ^4.6 | ✓ |
+  | typescript | 5.3.3 | ^5.3 | ✓ |
+  | vue-tsc | 1.8.27 | ^1.8 | ✓ |
+
+- **锁文件**：`frontend/package-lock.json` 已生成并随 stage-4 提交入库（`npm ci` 可复现）
+- **构建验证**：`npm run build`（vite 4.5.14）1458 模块转换成功；`npm run type-check`（vue-tsc 1.8.27）**exit 0**
+- **依赖边界**：严格等于用户预授权清单，未新增 `@types/node` / `@element-plus/icons-vue`——vite.config.ts 不用 node 内置模块、Element Plus 采用全量引入，故无需它们（规则 2.6）
+- **已知提示**：build 有「chunk >500kB」告警（Element Plus 全量引入所致），属预期；如需瘦身再改按需引入，本次不处理（规则 3.1）

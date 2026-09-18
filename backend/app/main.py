@@ -19,9 +19,8 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .config import settings
 from .database import init_models
-
-# 业务路由（阶段 2 实现后取消注释挂载）
-# from .routers import faults, pipelines
+from .exceptions import register_exception_handlers
+from .routers import faults, pipelines
 
 
 @asynccontextmanager
@@ -59,6 +58,11 @@ app = FastAPI(
     ],
 )
 
+# 注册全站错误处理（必须在 app 创建之后、路由生效之前调用）。
+# 四类异常（校验错 / HTTPException / 领域异常 / 其他 bug）在 exceptions.py 集中定义，
+# 所有接口的错误响应统一为 {code, message, details} 结构。
+register_exception_handlers(app)
+
 # ---- CORS 中间件 ----
 # 前端 Vite 开发服务器跑在 5173 端口，与后端 8000 端口不同源，浏览器会拦截跨域请求。
 # allow_origins 从配置读取（.env 的 CORS_ORIGINS），生产环境应收紧为实际前端域名。
@@ -72,10 +76,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ---- 挂载业务路由（阶段 2 实现后取消注释）----
-# 各 router 自带 /api/pipelines、/api/faults 前缀。
-# app.include_router(pipelines.router)
-# app.include_router(faults.router)
+# ---- 挂载业务路由 ----
+# 各 router 自带 /api/pipelines、/api/faults 前缀；tags 与上面 openapi_tags 对应。
+app.include_router(pipelines.router)
+app.include_router(faults.router)
 
 
 @app.get("/", tags=["health"])

@@ -7,15 +7,15 @@
 
 | 层 | 技术 | 版本（实际验证） |
 |---|---|---|
-| 前端框架 | Vue 3 + TypeScript | ^3.4 |
-| 构建工具 | Vite | ^4.5（Node 16 兼容） |
-| 路由 | Vue Router | ^4.2 |
-| 数据请求 | TanStack Query (vue-query) | ^4.36 |
-| 前端校验 | Zod | ^3.22 |
-| UI 组件库 | Element Plus | ^2.5 |
-| 后端框架 | FastAPI | ^0.115 |
-| 数据校验 | Pydantic 2 | ^2.9 |
-| ORM | SQLAlchemy 2 | ^2.0 |
+| 前端框架 | Vue 3 + TypeScript | Vue ^3.4（实测 3.4.38）、TS ^5.3（实测 5.3.3） |
+| 构建工具 | Vite | ^4.5（实测 4.5.14，Node 16 兼容） |
+| 路由 | Vue Router | ^4.2（实测 4.2.5） |
+| 数据请求 | TanStack Query (vue-query) | ^4.36（实测 4.36.2） |
+| 前端校验 | Zod | ^3.22（实测 3.22.5） |
+| UI 组件库 | Element Plus | ^2.5（实测 2.5.6） |
+| 后端框架 | FastAPI | ≥0.115（实测 0.141.1） |
+| 数据校验 | Pydantic 2 | ≥2.9（实测 2.13.5） |
+| ORM | SQLAlchemy 2 | ≥2.0（实测 2.0.54） |
 | 数据库 | SQLite | 内置（自动建表） |
 | 运行时 | Python 3.14.7 / Node v16.20.2 / npm 8.3.0 | Windows 10 22H2 |
 
@@ -34,7 +34,7 @@ pipeline-fault-tracker/
 │   ├── requirements.txt / requirements.lock.txt
 │   └── .env.example
 ├── frontend/         # Vue 3 + TS + Vite + Element Plus
-│   ├── src/{api, schemas, types, composables, views, components, router, styles}
+│   ├── src/{api, schemas, types, composables, views, components, router, styles, utils}
 │   ├── package.json / package-lock.json
 │   ├── vite.config.ts / tsconfig.json
 │   └── .env.example
@@ -88,37 +88,50 @@ npm ci
 # 2. 复制配置示例
 Copy-Item .env.example .env
 
-# 3. 启动开发服务器（默认 http://localhost:5173）
+# 3. 启动开发服务器（默认 http://127.0.0.1:5173）
 npm run dev
 ```
 
-验证：浏览器打开 `http://localhost:5173`，应看到故障列表页（含 seed 写入的模拟数据）。
+验证：浏览器打开 `http://127.0.0.1:5173`（`localhost:5173` 亦可，两者均在后端 CORS 白名单），应看到故障列表页（含 seed 写入的模拟数据）。
 
 ## 六、基本验证步骤（业务闭环）
 
 1. **列表页**：默认按发生时间倒序展示故障；可用"流水线""状态"下拉筛选。
 2. **登记故障**：点击"登记故障"→ 填写流水线 / 发生位置 / 发生时间 / 故障现象 → 提交；表单有 Zod 前端校验，提交期间按钮 loading 禁用防重复点击。
 3. **查看详情**：点击列表任一行进入详情页，展示全部字段与当前状态。
-4. **推进状态**：
-   - 待处理 → 处理中：填写处理说明（可选）→ 提交。
-   - 处理中 → 已完成：处理说明**必填** → 提交；完成后状态推进面板禁用，提示"已完成不可变更"。
-   - 已完成 → 任何状态：后端返回 422，前端 ElMessage 报错。
+4. **推进状态**（详情页“状态推进”面板按当前状态只渲染合法目标）：
+   - 待处理 → 处理中：处理说明可选 → 提交；成功后详情即时刷新，右上角 ElMessage 提示“状态已更新”。
+   - 待处理 / 处理中 → 已完成：处理说明**必填**；留空提交时后端返回 400 `handling_note_required`，前端对应字段标红。
+   - 已完成（终态）：面板锁定、不再渲染流转表单，提示“该故障已完成（终态），按业务规则不可再流转。”；若绕过前端直接调 API，后端返回 409 `invalid_transition`。
 5. **刷新持久化**：刷新页面或重启后端服务，数据仍在（SQLite 文件落盘）。
 
-## 七、配置说明
+## 七、后端接口一览
+
+> 完整交互式文档见 `http://127.0.0.1:8000/docs`（Swagger UI）。所有路径以 `/api` 为前缀；错误响应统一为 `{ code, message, details[] }`。
+
+| 方法 | 路径 | 说明 | 主要错误码 |
+|---|---|---|---|
+| GET | `/api/pipelines` | 流水线列表（按 code 升序；前端登记/筛选下拉数据源，只读） | — |
+| POST | `/api/pipelines` | 新建流水线（前端未接入，供直接调用/扩展） | 409 `pipeline_code_duplicate` |
+| GET | `/api/faults` | 故障列表（`pipeline_id`/`status` 筛选、`page`/`size` 分页，按发生时间倒序） | 422 参数校验 |
+| GET | `/api/faults/{id}` | 故障详情 | 404 `fault_not_found` |
+| POST | `/api/faults` | 登记故障（201 + `Location` 头） | 404 `pipeline_not_found` / 422 |
+| PATCH | `/api/faults/{id}/transition` | 推进状态（pending ↔ processing → done） | 400 `handling_note_required` / 404 / 409 `invalid_transition` / 422 |
+
+## 八、配置说明
 
 | 文件 | 作用 |
 |---|---|
 | `backend/.env.example` | 后端配置模板（DB 路径、CORS 白名单、端口） |
 | `frontend/.env.example` | 前端配置模板（`VITE_API_BASE_URL`） |
 
-## 八、依赖管理
+## 九、依赖管理
 
 - 后端：`requirements.txt`（声明）+ `requirements.lock.txt`（锁定，`pip freeze` 生成）。
 - 前端：`package.json`（声明）+ `package-lock.json`（锁定，`npm install` 生成，`npm ci` 复现）。
 - 变更历史与证据见 [DEPENDENCIES.md](./DEPENDENCIES.md)。
 
-## 九、已知限制
+## 十、已知限制
 
 - 无认证 / 权限系统（需求未要求）。
 - 无单元测试 / CI（需求未要求；如需补充请单独说明）。

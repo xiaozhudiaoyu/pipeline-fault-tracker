@@ -9,7 +9,7 @@
 
 | 日期时间 | 事件 | 包数变化 | 证据 |
 |---|---|---|---|
-| _待首次安装后填写_ | backend：`pip install -r requirements.txt`（FastAPI / SQLAlchemy 2 / Pydantic 2 / uvicorn 链） | 0 → N | `dist-info` 时间戳 + `pip freeze` |
+| 2026-09-18 | backend：`pip install -r requirements.txt`（FastAPI / SQLAlchemy 2 / Pydantic 2 / uvicorn 链） | 0 → 21 | `requirements.lock.txt`（`pip freeze`）+ `pip check`（见「五」） |
 | 2026-09-18 | frontend：`npm install`（Vue 3.4 / Vite 4.5 / Element Plus 2.5 / TanStack Query v4 / Zod 3 链） | 0 → 75 | `package-lock.json` + `npm ls --depth=0`（见「四」） |
 
 ## 二、版本锁定决策（2026-09-18）
@@ -47,9 +47,9 @@
 
 ## 三、待补章节（安装后填写）
 
-- [ ] backend 首批安装：包数、`dist-info` 时间戳、`pip freeze` 快照、`pip check` 结果
+- [x] backend 首批安装：见「五、backend 首批安装记录（2026-09-18）」
 - [x] frontend 首批安装：见「四、frontend 首批安装记录（2026-09-18）」
-- [ ] 锁文件生成：`requirements.lock.txt` / `package-lock.json` 的生成命令与提交
+- [x] 锁文件生成：`requirements.lock.txt`（`pip freeze`）/ `package-lock.json`（`npm install`）——命令与提交见「四」「五」
 - [ ] 后续任何增删：按 python_learn 台账风格逐节记录
 
 ## 四、frontend 首批安装记录（2026-09-18）
@@ -74,3 +74,24 @@
 - **构建验证**：`npm run build`（vite 4.5.14）1458 模块转换成功；`npm run type-check`（vue-tsc 1.8.27）**exit 0**
 - **依赖边界**：严格等于用户预授权清单，未新增 `@types/node` / `@element-plus/icons-vue`——vite.config.ts 不用 node 内置模块、Element Plus 采用全量引入，故无需它们（规则 2.6）
 - **已知提示**：build 有「chunk >500kB」告警（Element Plus 全量引入所致），属预期；如需瘦身再改按需引入，本次不处理（规则 3.1）
+
+## 五、backend 首批安装记录（2026-09-18）
+
+- **环境**：Python 3.14.7 / pip 26.2.1；虚拟环境 `backend/.venv`（`python -m venv .venv` 创建）
+- **命令**：`pip install -r requirements.txt` → 安装 **21 项**（6 直接依赖 + 15 传递依赖），**无版本冲突**
+- **`pip check`**：`No broken requirements found.`（依赖一致性通过）
+- **直接依赖实测版本**（`pip freeze`，全部满足 `requirements.txt` 声明的下限）：
+
+  | 包 | 实测版本 | 声明下限 | 命中 |
+  |---|---|---|---|
+  | fastapi | 0.141.1 | `>=0.115` | ✓ |
+  | uvicorn[standard] | 0.53.0 | `>=0.30` | ✓ |
+  | pydantic | 2.13.5 | `>=2.9` | ✓ |
+  | pydantic-settings | 2.15.0 | `>=2.5` | ✓ |
+  | python-dotenv | 1.2.3 | `>=1.0` | ✓ |
+  | SQLAlchemy | 2.0.54 | `>=2.0` | ✓ |
+
+- **传递依赖（15 项）**：annotated-doc / annotated-types / anyio / click / greenlet / h11 / httptools / idna / pydantic_core / PyYAML / starlette / typing-inspection / typing_extensions / watchfiles / websockets（其中 watchfiles / httptools / websockets / PyYAML 由 `uvicorn[standard]` 的 `[standard]` extra 引入，为 `--reload` 与 HTTP 解析所需）
+- **锁文件**：`backend/requirements.lock.txt` 由 `.venv\Scripts\python.exe -m pip freeze` 生成（2026-09-18），随 backend 基础工程提交入库（commit `2f75a67`）；`pip install -r requirements.lock.txt` 可精确复现本机环境
+- **运行验证**：`uvicorn app.main:app --port 8000` 启动成功，`GET /api/faults` 返回 200 + JSON；前后端联调全链路（列表 / 筛选 / 登记 / 详情 / 状态推进）经真实浏览器驱动验证通过（stage-7）
+- **SQLite 驱动**：Python 内置 `sqlite3`，无需额外安装依赖

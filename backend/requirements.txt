@@ -1,0 +1,19 @@
+# 流水线故障记录系统 —— 后端运行时依赖声明
+#
+# 安装：pip install -r requirements.txt
+# 精确复现：pip install -r requirements.lock.txt（由 pip freeze 生成）
+#
+# 版本策略：只锁主版本下限，具体版本号由 requirements.lock.txt 固化。
+# Python 3.14.7 兼容性已在 python_learn 项目验证（FastAPI / SQLAlchemy 2 / Pydantic 2）。
+
+# ---- Web 框架 ----
+fastapi>=0.115
+uvicorn[standard]>=0.30        # [standard] 含 watchfiles/httptools，--reload 硬需求
+
+# ---- 数据校验 / 配置 ----
+pydantic>=2.9
+pydantic-settings>=2.5         # 从 .env 读取配置（BaseSettings）
+python-dotenv>=1.0             # pydantic-settings 的 .env 解析后端
+
+# ---- ORM / 数据库 ----
+SQLAlchemy>=2.0                # 需求文档指定 SQLAlchemy 2；SQLite 驱动为 Python 内置，无需额外安装

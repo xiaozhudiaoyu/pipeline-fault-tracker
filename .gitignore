@@ -1,0 +1,51 @@
+# ---- Python 字节码 / 打包产物 ----
+__pycache__/
+*.py[cod]
+*.egg-info/
+.Python
+build/
+dist/
+
+# ---- Python 虚拟环境（体积大、与本机绑定，绝不提交）----
+backend/.venv/
+.venv/
+venv/
+env/
+
+# ---- SQLite 运行时数据库文件（属"运行结果"，不纳入版本管理）----
+backend/*.db
+backend/*.sqlite
+backend/*.sqlite3
+backend/data/*.db
+
+# ---- 本地环境变量（含端口、DB 路径等本机配置，只提交 .env.example）----
+.env
+.env.local
+backend/.env
+frontend/.env
+frontend/.env.local
+
+# ---- Node / 前端产物 ----
+node_modules/
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+frontend/coverage/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ---- 编辑器 / IDE 配置 ----
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# ---- 操作系统杂项 ----
+Thumbs.db
+.DS_Store
+
+# ---- 临时/调试脚本（本地保留，不提交）----
+_tmp/
+*.log

@@ -20,6 +20,7 @@ from sqlalchemy.orm import Session, selectinload
 from . import schemas
 from .exceptions import (
     FaultNotFoundError,
+    HandlingNoteLockedError,
     HandlingNoteRequiredError,
     InvalidTransitionError,
     PipelineCodeDuplicateError,
@@ -142,6 +143,30 @@ def create_fault(db: Session, data: schemas.FaultCreate) -> PipelineFault:
     db.add(fault)
     db.commit()
     return get_fault(db, fault.id)
+
+
+def update_fault(db: Session, fault_id: int, data: schemas.FaultUpdate) -> PipelineFault:
+    """修改故障基础信息（location / symptom / handling_note），不涉及状态流转。
+
+    业务规则：done 后 handling_note 锁定 —— 完成时的说明是"结案结论"，
+    事后不可篡改（保追溯性），违反抛 HandlingNoteLockedError（409）。
+    location / symptom 不受此限：错别字修正等基础信息维护在 done 后仍合理。
+
+    exclude_unset=True：只取客户端"传了的"字段 —— 没传即不改；
+    handling_note 的显式 null 已在 schemas.FaultUpdate 层拒绝（422），到这里不会出现。
+    """
+    fault = get_fault(db, fault_id)
+    changes = data.model_dump(exclude_unset=True)
+
+    # 规则：done 后处理说明锁定（"结案结论"不可篡改）。
+    if "handling_note" in changes and fault.status == FaultStatus.done:
+        raise HandlingNoteLockedError(fault_id)
+
+    for field, value in changes.items():
+        setattr(fault, field, value)
+    db.commit()
+    # commit 触发 updated_at onupdate；重新查询拿含 pipeline 的完整对象（同 create_fault）
+    return get_fault(db, fault_id)
 
 
 def transition_fault(

@@ -4,6 +4,7 @@
 #   GET    /api/faults              故障查询（按流水线/状态筛选，分页，occurred_at 倒序）
 #   POST   /api/faults              故障登记
 #   GET    /api/faults/{id}         单条详情
+#   PATCH  /api/faults/{id}         修改基础信息（location/symptom/handling_note，done 后说明锁定）
 #   PATCH  /api/faults/{id}/transition  故障处理（状态流转 + 处理说明）
 #
 # 路由层只管"收发请求"，业务规则（状态流转校验）在 crud 层，错误结构由 exceptions 统一。
@@ -63,6 +64,31 @@ def get_fault(fault_id: int, db: Session = Depends(get_db)) -> schemas.FaultOut:
     找不到记录时 crud 抛 FaultNotFoundError，由 handler 转成 404 统一错误结构。
     """
     return schemas.FaultOut.model_validate(crud.get_fault(db, fault_id))
+
+
+@router.patch(
+    "/{fault_id}",
+    response_model=schemas.FaultOut,
+    responses={
+        404: {"model": schemas.ErrorOut, "description": "故障记录不存在"},
+        409: {"model": schemas.ErrorOut, "description": "done 后处理说明已锁定，不可修改"},
+        422: {"model": schemas.ErrorOut, "description": "请求体未通过校验"},
+    },
+)
+def update_fault(
+    fault_id: int,
+    payload: schemas.FaultUpdate,
+    db: Session = Depends(get_db),
+) -> schemas.FaultOut:
+    """修改故障基础信息（不含状态流转，流转仍走 /transition）。
+
+    与 POST 全量创建不同，PATCH 语义是"部分更新"：FaultUpdate 字段全部可选，
+    crud 层用 exclude_unset 只应用客户端传了的字段。
+
+    业务规则在 crud.update_fault：done 后 handling_note 锁定 → 409 handling_note_locked
+    （"结案结论"不可篡改，保追溯性）；字段级校验（长度/pattern）由 schemas 层拦 → 422。
+    """
+    return schemas.FaultOut.model_validate(crud.update_fault(db, fault_id, payload))
 
 
 @router.post(

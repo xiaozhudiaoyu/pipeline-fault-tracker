@@ -126,6 +126,29 @@ class HandlingNoteRequiredError(AppError):
         )
 
 
+class HandlingNoteLockedError(AppError):
+    """409：故障已完成（done）后，处理说明被锁定，不可再修改。
+
+    业务规则：完成时的说明是"结案结论"，事后篡改会破坏追溯性。
+    用 409 而非 422/400：请求格式与字段都合法，只是与记录当前状态（done）冲突，
+    同 InvalidTransitionError 的选码理由。
+    """
+
+    status_code = status.HTTP_409_CONFLICT
+    code = "handling_note_locked"
+    default_message = "已完成的故障不可修改处理说明"
+
+    def __init__(self, fault_id: int) -> None:
+        super().__init__(
+            f"故障 {fault_id} 已完成，处理说明已锁定不可修改",
+            details=[{
+                "field": "body.handling_note",
+                "type": "locked",
+                "message": "done 状态下处理说明不可再修改",
+            }],
+        )
+
+
 # HTTPException 状态码 → 机器可读码。没列出的自动退化成 http_418 形式。
 _HTTP_CODE_MAP: dict[int, str] = {
     status.HTTP_400_BAD_REQUEST: "bad_request",

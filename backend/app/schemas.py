@@ -8,11 +8,12 @@
 # Pydantic 2 关键写法：
 #   · model_config = ConfigDict(from_attributes=True) —— 允许从 ORM 对象属性读取（替代 v1 的 orm_mode）；
 #   · Field(...) 上的约束（min_length/ge 等）由 FastAPI 在运行时自动校验，非法输入直接 422；
-#   · extra="forbid" —— 客户端多传拼错名字的字段直接 422，不被静默丢弃。
+#   · extra="forbid" —— 客户端多传拼错名字的字段直接 422，不被静默丢弃；
+#   · field_validator —— 跨值/带容差的校验（如时间不晚于当前）用装饰器，同样汇入 422 details。
 
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from .models import FaultStatus
 
@@ -51,9 +52,28 @@ class FaultCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     pipeline_id: int = Field(ge=1, description="所属流水线 ID，必须已存在")
-    location: str = Field(min_length=2, max_length=200, description="故障发生位置，如 3号工位传送带")
-    occurred_at: datetime = Field(description="故障发生时间（业务时间，ISO 8601 格式）")
-    symptom: str = Field(min_length=5, description="故障现象描述，至少 5 字")
+    location: str = Field(
+        min_length=2,
+        max_length=200,
+        pattern=r"^\S.*$",
+        description="故障发生位置，如 3号工位传送带；首字符不得为空白",
+    )
+    occurred_at: datetime = Field(description="故障发生时间（业务时间，ISO 8601 格式），不得晚于当前时间")
+    symptom: str = Field(min_length=5, max_length=1000, description="故障现象描述，5~1000 字")
+
+    @field_validator("occurred_at")
+    @classmethod
+    def occurred_at_not_in_future(cls, v: datetime) -> datetime:
+        """业务时间不能是未来 —— 登记的是"已发生"的故障。
+
+        容忍 60 秒时钟偏移：客户端与服务器时钟未必同步，秒级误差不应误拦。
+        aware/naive 统一换算成 aware 再比，避免 Python 直接比较抛 TypeError（会变成 500）。
+        """
+        now = datetime.now(timezone.utc)
+        v_aware = v if v.tzinfo is not None else v.astimezone()
+        if v_aware > now + timedelta(seconds=60):
+            raise ValueError("故障发生时间不得晚于当前时间")
+        return v
 
 
 class FaultOut(BaseModel):
@@ -92,8 +112,57 @@ class FaultTransition(BaseModel):
     handling_note: str | None = Field(
         default=None,
         max_length=2000,
-        description="处理说明；目标为 done 时必填（crud 层校验）",
+        description="处理说明；目标为 done 时必填（crud 层校验）；一旦提供不得少于 5 字",
     )
+
+    @field_validator("handling_note")
+    @classmethod
+    def handling_note_min_length(cls, v: str | None) -> str | None:
+        """业务规则：处理说明一旦提供就必须有实质内容（strip 后 ≥5 字）。
+
+        None 放行（语义是"本次不改说明"）；前端已把空串转成 null，
+        直接调 API 传 "  ok  " 这类敷衍内容会被这里拦下（422）。
+        """
+        if v is not None and len(v.strip()) < 5:
+            raise ValueError("处理说明一旦提供，去除首尾空格后不得少于 5 字")
+        return v
+
+
+class FaultUpdate(BaseModel):
+    """PATCH /api/faults/{id} 的请求体：修改故障基础信息（不含状态流转）。
+
+    全部字段可选，只改"传了的"（crud 层用 model_dump(exclude_unset=True) 区分
+    "没传"与"传了 null"）。状态流转仍走 /transition 端点，两处规则不重叠。
+    业务规则：done 后 handling_note 锁定不可再改（crud 层校验 → 409）。
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    location: str | None = Field(
+        default=None,
+        min_length=2,
+        max_length=200,
+        pattern=r"^\S.*$",
+        description="故障发生位置；首字符不得为空白",
+    )
+    symptom: str | None = Field(default=None, min_length=5, max_length=1000, description="故障现象描述，5~1000 字")
+    handling_note: str | None = Field(
+        default=None,
+        min_length=5,
+        max_length=2000,
+        description="处理说明，不少于 5 字；不接受显式 null（不支持清空）；done 后不可再改（crud 层校验）",
+    )
+
+    @field_validator("handling_note")
+    @classmethod
+    def handling_note_not_null(cls, v: str | None) -> str | None:
+        """修改场景不支持"传 null 清空说明"：要么不传（不改），要么传 ≥5 字的有效内容。
+        同时拦住"5 个空格+1 个字"这类绕过字段级 min_length 的写法（strip 后验长度）。"""
+        if v is None:
+            raise ValueError("handling_note 不支持显式置空，不传即不修改")
+        if len(v.strip()) < 5:
+            raise ValueError("处理说明一旦提供，去除首尾空格后不得少于 5 字")
+        return v
 
 
 class FaultListOut(BaseModel):

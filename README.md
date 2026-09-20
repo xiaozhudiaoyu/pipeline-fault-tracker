@@ -116,7 +116,7 @@ npm run dev
 | GET | `/api/faults` | 故障列表（`pipeline_id`/`status` 筛选、`page`/`size` 分页，按发生时间倒序） | 422 参数校验 |
 | GET | `/api/faults/{id}` | 故障详情 | 404 `fault_not_found` |
 | POST | `/api/faults` | 登记故障（201 + `Location` 头；occurred_at 不晚于当前时间、symptom 5~1000 字、location 首字符非空白） | 404 `pipeline_not_found` / 422 |
-| PATCH | `/api/faults/{id}` | 修改基础信息（location/symptom/handling_note，部分更新；前端未接入，供直接调用/扩展） | 404 / 409 `handling_note_locked`（done 后说明锁定） / 422 |
+| PATCH | `/api/faults/{id}` | 修改基础信息（location/symptom/handling_note，部分更新；前端详情页已接入） | 404 / 409 `handling_note_locked`（done 后说明锁定） / 422 |
 | PATCH | `/api/faults/{id}/transition` | 推进状态（pending ↔ processing → done；handling_note 一旦提供 strip 后 ≥5 字） | 400 `handling_note_required` / 404 / 409 `invalid_transition` / 422 |
 
 ## 八、配置说明

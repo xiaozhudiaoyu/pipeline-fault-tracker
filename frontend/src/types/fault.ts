@@ -57,6 +57,15 @@ export interface FaultTransitionPayload {
   handling_note?: string | null
 }
 
+// PATCH /api/faults/{id} 请求体（后端 FaultUpdate）——修改基础信息，不含状态流转。
+// 三字段全部可选：后端用 exclude_unset 只应用「传了的」字段，故前端只发有改动的键。
+// 注意：handling_note 不接受显式 null（后端 422），不改就不发这个键；done 后不可改（后端 409）。
+export interface FaultUpdatePayload {
+  location?: string
+  symptom?: string
+  handling_note?: string
+}
+
 // 统一错误结构（后端 ErrorOut / FieldErrorOut）
 export interface FieldError {
   field: string // 如 body.symptom / query.page / path.fault_id / body.code

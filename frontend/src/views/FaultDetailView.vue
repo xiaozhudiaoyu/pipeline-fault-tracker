@@ -6,6 +6,7 @@ import { useRouter } from 'vue-router'
 
 import StatusTag from '../components/StatusTag.vue'
 import StatusTransitionPanel from '../components/StatusTransitionPanel.vue'
+import FaultEditPanel from '../components/FaultEditPanel.vue'
 import { useFaultDetail } from '../composables/useFaultDetail'
 import { formatDateTime } from '../utils/format'
 
@@ -57,6 +58,7 @@ const errorMessage = computed(() => {
         <el-descriptions-item label="完成时间">{{ formatDateTime(fault.closed_at) }}</el-descriptions-item>
       </el-descriptions>
 
+      <FaultEditPanel :fault="fault" />
       <StatusTransitionPanel :fault="fault" />
     </template>
   </section>

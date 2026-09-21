@@ -1,16 +1,18 @@
 # 流水线故障记录系统 —— 后端依赖锁文件
 #
 # 生成命令：.venv\Scripts\python.exe -m pip freeze
-# 生成时间：2026-09-18
+# 生成时间：2026-09-20（D2 引入 alembic 后重新生成）
 # 安装方式：pip install -r requirements.lock.txt（精确复现本机环境）
 #
-# 共 21 项 = 6 直接依赖（fastapi / uvicorn[standard] / pydantic /
-#            pydantic-settings / python-dotenv / SQLAlchemy）+ 15 传递依赖。
+# 共 24 项 = 7 直接依赖（fastapi / uvicorn[standard] / pydantic /
+#            pydantic-settings / python-dotenv / SQLAlchemy / alembic）
+#            + 17 传递依赖。
 # 直接依赖声明见 requirements.txt；逐项证据与归类见 DEPENDENCIES.md。
 #
 # 注意：pydantic_core / typing_extensions 的下划线为 pip freeze 原始输出
 #       （其 distribution 名即带下划线），pip install -r 可正常识别。
 
+alembic==1.20.0
 annotated-doc==0.0.5
 annotated-types==0.8.0
 anyio==4.15.1
@@ -20,6 +22,8 @@ greenlet==3.5.6
 h11==0.16.0
 httptools==0.8.0
 idna==3.20
+Mako==1.4.1
+MarkupSafe==3.0.3
 pydantic==2.13.5
 pydantic-settings==2.15.0
 pydantic_core==2.46.5

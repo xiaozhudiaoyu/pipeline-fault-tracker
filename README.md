@@ -132,7 +132,26 @@ npm run dev
 - 前端：`package.json`（声明）+ `package-lock.json`（锁定，`npm install` 生成，`npm ci` 复现）。
 - 变更历史与证据见 [DEPENDENCIES.md](./DEPENDENCIES.md)。
 
-## 十、已知限制
+## 十、数据库迁移（Alembic）
+
+- 迁移目录 `backend/alembic/`，配置 `backend/alembic.ini`（保持 ASCII-only，中文 Windows 下避免编码坑）。
+- **连接串与 app 同源**：`env.py` 从 `app.config.settings` 取 `database_url`，ini 里的 `sqlalchemy.url` 仅是占位；故迁移命令须在 `backend/` 下执行。临时验证可用环境变量 `DATABASE_URL` 覆盖指向其他库文件。
+- **常用命令**（在 `backend/` 下，`.venv\Scripts\python.exe -m alembic ...`）：
+
+  | 命令 | 作用 |
+  |---|---|
+  | `upgrade head` | 升级到最新版本 |
+  | `downgrade -1` | 回退一个版本 |
+  | `stamp <rev>` | 给现有库打标记（只写版本号，不执行迁移；老库接入时用） |
+  | `history` | 查看迁移链 |
+  | `revision -m "..."` | 生成新迁移脚本（`--autogenerate` 自动对比模型与库差异） |
+
+- **`alembic_version` 表的作用**：只有一列一行，记录当前库已应用到哪个版本号；`upgrade`/`downgrade` 靠它判断需要执行哪些迁移脚本，执行后同步更新。
+- **现有迁移**：
+  - `843f28b00698` baseline —— 手写基线，照抄现有库真实 DDL（autogenerate 对已存在且一致的库产不出 CREATE）；现有库用 `stamp` 打标，空库可由此从零重建。
+  - `a74bf448a946` —— 给 `pipeline_faults.occurred_at` 建索引 `ix_pipeline_faults_occurred_at`（列表页倒序排序/时间筛选的查询热点），与 models.py 的 `index=True` 一致。
+
+## 十一、已知限制
 
 - 无认证 / 权限系统（需求未要求）。
 - 无单元测试 / CI（需求未要求；如需补充请单独说明）。

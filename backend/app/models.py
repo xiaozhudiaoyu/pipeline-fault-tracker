@@ -135,9 +135,12 @@ class PipelineFault(Base):
 
     # occurred_at 是"故障发生时间"（业务时间），由用户登记时填写；
     # created_at 是"记录入库时间"（系统时间），由数据库生成。两者可能不同（补录场景）。
+    # index=True：列表页按它倒序排序 + 时间范围筛选，是查询热点列；
+    #   与 Alembic 迁移 a74bf448a946（ix_pipeline_faults_occurred_at）保持一致。
     occurred_at: Mapped[datetime] = mapped_column(
         DateTime,
         nullable=False,
+        index=True,
         comment="故障发生时间（业务时间，用户填写）",
     )
 

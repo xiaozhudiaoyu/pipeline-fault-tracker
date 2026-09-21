@@ -10,6 +10,7 @@
 | 日期时间 | 事件 | 包数变化 | 证据 |
 |---|---|---|---|
 | 2026-09-18 | backend：`pip install -r requirements.txt`（FastAPI / SQLAlchemy 2 / Pydantic 2 / uvicorn 链） | 0 → 21 | `requirements.lock.txt`（`pip freeze`）+ `pip check`（见「五」） |
+| 2026-09-20 | backend：`pip install alembic`（D2 数据库迁移支持，含 Mako / MarkupSafe 传递依赖） | 21 → 24 | `pip freeze`（锁文件重生成）+ `pip check` + dist-info 时间戳（见「六」） |
 | 2026-09-18 | frontend：`npm install`（Vue 3.4 / Vite 4.5 / Element Plus 2.5 / TanStack Query v4 / Zod 3 链） | 0 → 75 | `package-lock.json` + `npm ls --depth=0`（见「四」） |
 
 ## 二、版本锁定决策（2026-09-18）
@@ -95,3 +96,19 @@
 - **锁文件**：`backend/requirements.lock.txt` 由 `.venv\Scripts\python.exe -m pip freeze` 生成（2026-09-18），随 backend 基础工程提交入库（commit `2f75a67`）；`pip install -r requirements.lock.txt` 可精确复现本机环境
 - **运行验证**：`uvicorn app.main:app --port 8000` 启动成功，`GET /api/faults` 返回 200 + JSON；前后端联调全链路（列表 / 筛选 / 登记 / 详情 / 状态推进）经真实浏览器驱动验证通过（stage-7）
 - **SQLite 驱动**：Python 内置 `sqlite3`，无需额外安装依赖
+
+## 六、backend alembic 安装记录（2026-09-20）
+
+- **背景**：D2 练习引入数据库迁移工具 alembic；SQLAlchemy 2.0.54 已存在，仅新增 alembic 本体与其模板渲染依赖
+- **命令**：`.venv\Scripts\python.exe -m pip install alembic` → 安装 **3 项**（alembic + Mako + MarkupSafe），包数 21 → 24，**无版本冲突**
+- **`pip check`**：`No broken requirements found.`（依赖一致性通过）
+- **实测版本与证据**（dist-info 时间戳，`site-packages` 目录创建时间）：
+
+  | 包 | 实测版本 | 声明下限 | 命中 | dist-info 时间戳 |
+  |---|---|---|---|---|
+  | alembic | 1.20.0 | `>=1.20`（本次写入 requirements.txt） | ✓ | 2026-09-20 17:23:26 |
+  | Mako | 1.4.1 | 传递依赖（alembic 的 autogenerate 模板渲染引擎） | — | 2026-09-20 17:23:22 |
+  | MarkupSafe | 3.0.3 | 传递依赖（Mako 的转义层） | — | 2026-09-20 17:23:20 |
+
+- **声明与锁文件同步**：`requirements.txt` 新增 `alembic>=1.20`（ORM/数据库 分组）；`requirements.lock.txt` 由 `pip freeze` 重新生成（2026-09-20，24 项 = 7 直接 + 17 传递）
+- **引入用途**：backend/alembic/ 迁移目录（D2：baseline `843f28b00698` + 增量索引 `a74bf448a946`），未影响运行时 API 依赖面（alembic 仅迁移期使用）

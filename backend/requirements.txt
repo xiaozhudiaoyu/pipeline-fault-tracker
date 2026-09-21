@@ -17,3 +17,4 @@ python-dotenv>=1.0             # pydantic-settings 的 .env 解析后端
 
 # ---- ORM / 数据库 ----
 SQLAlchemy>=2.0                # 需求文档指定 SQLAlchemy 2；SQLite 驱动为 Python 内置，无需额外安装
+alembic>=1.20                  # 数据库迁移（D2 引入）；Mako 为其 autogenerate 模板渲染的传递依赖

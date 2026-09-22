@@ -24,6 +24,7 @@ dependencies = [
 ]
 
 [tool.uv]
+package = false                     # 应用项目：不构建、不分发（显式声明，见 docs.astral.sh/uv/concepts/projects/config）
 # 约束：迁移期保持与旧 pip 锁文件一致（watchfiles 1.2.0），避免迁移夹带传递依赖升级。
 # 将来升级 watchfiles 时移除本约束，单独走一次提交（规则 3.5）。
 constraint-dependencies = [

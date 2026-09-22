@@ -31,7 +31,7 @@ pipeline-fault-tracker/
 │   │   ├── schemas.py / crud.py / exceptions.py
 │   │   └── routers/{pipelines.py, faults.py}
 │   ├── seed.py       # 模拟数据脚本
-│   ├── requirements.txt / requirements.lock.txt
+│   ├── pyproject.toml / uv.lock   # 依赖声明（uv 工作流）
 │   └── .env.example
 ├── frontend/         # Vue 3 + TS + Vite + Element Plus
 │   ├── src/{api, schemas, types, composables, views, components, router, styles, utils}
@@ -49,6 +49,7 @@ pipeline-fault-tracker/
 | 组件 | 要求版本 | 验证命令 |
 |---|---|---|
 | Python | ≥ 3.11（本项目验证于 3.14.7） | `python --version` |
+| uv | ≥ 0.4（本项目验证于 0.12.8，虚拟环境管理工具） | `uv --version` |
 | Node.js | ≥ 16（本项目验证于 v16.20.2） | `node --version` |
 | npm | ≥ 8 | `npm --version` |
 | Git | ≥ 2.20 | `git --version` |
@@ -58,21 +59,17 @@ pipeline-fault-tracker/
 ```powershell
 cd backend
 
-# 1. 创建并激活虚拟环境
-python -m venv .venv
-.venv\Scripts\Activate.ps1
+# 1. 安装依赖（uv sync 按 uv.lock 精确复现；.venv 不存在时自动创建）
+uv sync
 
-# 2. 安装依赖（按锁文件精确复现）
-pip install -r requirements.lock.txt
-
-# 3. 复制配置示例（按需修改端口、DB 路径）
+# 2. 复制配置示例（按需修改端口、DB 路径）
 Copy-Item .env.example .env
 
-# 4. 初始化数据库（自动建表 + 写入模拟数据）
-python seed.py
+# 3. 初始化数据库（自动建表 + 写入模拟数据）
+.venv\Scripts\python.exe seed.py
 
-# 5. 启动服务（默认 http://127.0.0.1:8000）
-uvicorn app.main:app --reload --port 8000
+# 4. 启动服务（默认 http://127.0.0.1:8000）
+.venv\Scripts\python.exe -m uvicorn app.main:app --reload --port 8000
 ```
 
 验证：浏览器打开 `http://127.0.0.1:8000/docs`，应看到 Swagger UI 与全部接口。
@@ -128,7 +125,7 @@ npm run dev
 
 ## 九、依赖管理
 
-- 后端：`requirements.txt`（声明）+ `requirements.lock.txt`（锁定，`pip freeze` 生成）。
+- 后端：`pyproject.toml`（声明，`[project].dependencies`）+ `uv.lock`（锁定，`uv lock` 生成，`uv sync` 复现）。
 - 前端：`package.json`（声明）+ `package-lock.json`（锁定，`npm install` 生成，`npm ci` 复现）。
 - 变更历史与证据见 [DEPENDENCIES.md](./DEPENDENCIES.md)。
 

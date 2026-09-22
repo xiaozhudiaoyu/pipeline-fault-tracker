@@ -1,0 +1,31 @@
+# 流水线故障记录系统 —— backend 项目声明（uv 工作流，2026-09-22 迁移）
+#
+# 声明策略：只写直接依赖的主版本下界，精确版本由 uv.lock 锁定（uv lock / uv sync 复现）。
+# 升级路径：uv lock --upgrade-package <包名> 单包升级（规则 3.5：升级与功能改动分开走）。
+# Python 3.14.7 兼容性已在 python_learn 项目验证（FastAPI / SQLAlchemy 2 / Pydantic 2）。
+# 原 requirements.txt / requirements.lock.txt 已由本文件 + uv.lock 取代（迁移记录见 DEPENDENCIES.md「八」）。
+
+[project]
+name = "pipeline-fault-tracker-backend"
+version = "0.1.0"
+description = "流水线故障记录系统后端（FastAPI + SQLAlchemy 2 + SQLite）"
+requires-python = ">=3.11"
+dependencies = [
+    # ---- Web 框架 ----
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",        # [standard] 含 watchfiles/httptools，--reload 硬需求
+    # ---- 数据校验 / 配置 ----
+    "pydantic>=2.9",
+    "pydantic-settings>=2.5",         # 从 .env 读取配置（BaseSettings）
+    "python-dotenv>=1.0",             # pydantic-settings 的 .env 解析后端
+    # ---- ORM / 数据库 ----
+    "SQLAlchemy>=2.0",                # 需求文档指定 SQLAlchemy 2；SQLite 驱动为 Python 内置，无需额外安装
+    "alembic>=1.20",                  # 数据库迁移（D2 引入）；Mako 为其 autogenerate 模板渲染的传递依赖
+]
+
+[tool.uv]
+# 约束：迁移期保持与旧 pip 锁文件一致（watchfiles 1.2.0），避免迁移夹带传递依赖升级。
+# 将来升级 watchfiles 时移除本约束，单独走一次提交（规则 3.5）。
+constraint-dependencies = [
+    "watchfiles==1.2.0",
+]

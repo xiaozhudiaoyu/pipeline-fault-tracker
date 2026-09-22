@@ -11,6 +11,8 @@
 |---|---|---|---|
 | 2026-09-18 | backend：`pip install -r requirements.txt`（FastAPI / SQLAlchemy 2 / Pydantic 2 / uvicorn 链） | 0 → 21 | `requirements.lock.txt`（`pip freeze`）+ `pip check`（见「五」） |
 | 2026-09-20 | backend：`pip install alembic`（D2 数据库迁移支持，含 Mako / MarkupSafe 传递依赖） | 21 → 24 | `pip freeze`（锁文件重生成）+ `pip check` + dist-info 时间戳（见「六」） |
+| 2026-09-21 | backend：uv 重建虚拟环境（删 pip venv → `uv venv` + `uv pip install -r requirements.lock.txt`） | 24 → 24（纯重建） | `uv pip check` + 锁文件逐项版本一致 + `/api/faults` 200（见「七」） |
+| 2026-09-22 | backend：迁移 uv 工作流（requirements.txt/lock.txt → pyproject.toml + uv.lock，`uv sync` 复现） | 24 → 24（锁定格式变更，版本零漂移） | uv.lock 与旧锁逐项对比 + `uv sync` 全命中 + `uv pip check` + `/api/faults` 200（见「八」） |
 | 2026-09-18 | frontend：`npm install`（Vue 3.4 / Vite 4.5 / Element Plus 2.5 / TanStack Query v4 / Zod 3 链） | 0 → 75 | `package-lock.json` + `npm ls --depth=0`（见「四」） |
 
 ## 二、版本锁定决策（2026-09-18）
@@ -112,3 +114,22 @@
 
 - **声明与锁文件同步**：`requirements.txt` 新增 `alembic>=1.20`（ORM/数据库 分组）；`requirements.lock.txt` 由 `pip freeze` 重新生成（2026-09-20，24 项 = 7 直接 + 17 传递）
 - **引入用途**：backend/alembic/ 迁移目录（D2：baseline `843f28b00698` + 增量索引 `a74bf448a946`），未影响运行时 API 依赖面（alembic 仅迁移期使用）
+
+## 七、backend uv 环境重建记录（2026-09-21 · D4）
+
+- **背景**：D4 练习选定 uv 作为虚拟环境管理工具，按验收要求「从零（删掉旧 venv）」重建 backend 环境
+- **工具**：uv 0.12.8（2026-08-31 构建，`uv --version` 证实；本机此前已安装，本次未新增安装）
+- **命令**：删除旧 `backend/.venv`（pip 创建，Python 3.14.7）→ `uv venv .venv`（CPython 3.14.7）→ `uv pip install -r requirements.lock.txt`
+- **结果**：24 项按锁文件精确复现（7 直接 + 17 传递，版本逐项一致）；`uv pip check` → `All installed packages are compatible`（21ms）
+- **耗时**：解析 4.47s + 安装 1m04s，总计约 72s（另有 hardlink 失败回退 copy 的警告：uv 缓存与项目目录不在同一文件系统，属正常降级，无功能影响）
+- **运行验证**：`.venv\Scripts\python.exe -m uvicorn app.main:app --port 8001` 启动成功，`GET /api/faults` 返回 200 + JSON（8000 被 `E:\python_uv` 目录的另一实例占用，改用 8001 验证，未干扰他人进程）；`.venv\Scripts\python.exe -m alembic current` = `a74bf448a946 (head)`，D2 迁移链在新环境正常
+- **依赖边界**：纯环境重建，未增删任何包（24 项不变），requirements.txt / requirements.lock.txt 均无变化；未使用 `uv add` / `uv init`，故未生成 pyproject.toml / uv.lock，git 工作区无新增文件
+
+## 八、backend 迁移 uv 工作流（pyproject.toml + uv.lock）（2026-09-22）
+
+- **背景**：D4 选定 uv 管理环境后，将依赖管理迁移为 pyproject.toml（声明）+ uv.lock（锁定）工作流，取代 requirements.txt / requirements.lock.txt（经用户确认全删）
+- **命令**：新建 `backend/pyproject.toml`（PEP 621 `[project]`，7 直接依赖，下界声明与旧 requirements.txt 完全一致）→ `uv lock` → `uv sync`（现有 .venv 24 项全部命中，无安装动作）→ 删除 requirements 两文件
+- **锁对比**：uv.lock 26 项 = 24 项旧包 + `uvloop 0.22.1`（uvicorn[standard] 的 Linux-only extra，跨平台锁定新增，Windows 上不安装）+ 项目自身条目 `pipeline-fault-tracker-backend 0.1.0`；pydantic-core / typing-extensions 的命名差异为连字符规范化，同一包同版本；`watchfiles` 解析到 1.3.0 后经用户确认钉回 1.2.0（`[tool.uv] constraint-dependencies`，迁移零漂移，升级将来单独走提交）
+- **删除证据链**：requirements 两文件的全部引用点（README 目录树 / 安装流程 / 依赖管理节、本台账）已同步更新；`backend/dev.bat` 仅在「环境缺失」错误提示中引用 requirements.txt（本地脚本，被 .gitignore 忽略，GBK 编码未改动），无功能依赖
+- **运行验证**：`uv pip check` → `All installed packages are compatible`（18ms）；`.venv\Scripts\python.exe -m alembic current` → `a74bf448a946 (head)`；uvicorn 启动后 `GET /api/faults` → 200（服务日志证实）
+- **依赖边界**：无任何包版本变化（24 项与旧锁逐项一致）；pyproject.toml + uv.lock 新增入库，requirements 两文件删除

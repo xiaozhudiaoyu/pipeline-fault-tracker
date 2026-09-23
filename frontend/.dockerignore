@@ -1,0 +1,5 @@
+# 构建上下文排除清单：避免把本机 node_modules / 旧构建产物上传给 daemon
+node_modules/
+dist/
+.env
+.env.local

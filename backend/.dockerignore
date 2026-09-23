@@ -1,0 +1,7 @@
+# 构建上下文排除清单：减小发送给 daemon 的体积，避免本机产物混入镜像
+.venv/
+__pycache__/
+*.db
+.env
+.idea/
+.python-version

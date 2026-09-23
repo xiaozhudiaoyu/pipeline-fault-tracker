@@ -1,0 +1,32 @@
+# 编排定义：一条命令起前后端双服务（D4 练习）。
+# 使用：docker compose up -d --build
+# 停止：docker compose down
+# 注意：backend 用 bind mount（~/pft-bind）持久化，数据落在宿主机目录；
+# down / down -v 都不会删它（down -v 只删 named volume），手动删目录才丢数据
+
+services:
+  backend:
+    build: ./backend
+    environment:
+      # 与挂载点对齐：数据库文件落在容器内 /app/data（bind mount 到宿主机 ~/pft-bind）
+      DATABASE_URL: sqlite:///./data/fault_tracker.db
+    volumes:
+      # bind mount：数据库直接落在宿主机（WSL 家目录）的 ~/pft-bind 下，
+      # 可直接 ls/备份；与 D2 的单容器命令形态一致
+      - ~/pft-bind:/app/data
+    healthcheck:
+      # slim 镜像无 curl，用系统 python 的 urllib 探活（探活端点 /api/health）
+      test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://127.0.0.1:8000/api/health')"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "8080:80"
+    depends_on:
+      backend:
+        # 关键概念：depends_on 只保证【启动顺序】，不保证【就绪】；
+        # 加 condition: service_healthy 后，等 backend 健康检查通过才启动 frontend
+        condition: service_healthy

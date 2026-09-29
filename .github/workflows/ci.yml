@@ -1,0 +1,53 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: 安装 uv 与 Python 3.14
+        uses: astral-sh/setup-uv@v10
+        with:
+          python-version: "3.14"
+          working-directory: backend
+
+      - name: 安装依赖（uv 锁文件复现，含 dev 组 pytest/httpx）
+        run: uv sync --frozen
+
+      - name: 运行测试（四层：schemas/crud/API 集成/错误路径）
+        run: uv run pytest
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "16.20.2"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: 安装依赖
+        run: npm ci
+
+      - name: 类型检查
+        run: npm run type-check
+
+      - name: 构建
+        run: npm run build

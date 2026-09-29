@@ -13,6 +13,7 @@
 | 2026-09-20 | backend：`pip install alembic`（D2 数据库迁移支持，含 Mako / MarkupSafe 传递依赖） | 21 → 24 | `pip freeze`（锁文件重生成）+ `pip check` + dist-info 时间戳（见「六」） |
 | 2026-09-21 | backend：uv 重建虚拟环境（删 pip venv → `uv venv` + `uv pip install -r requirements.lock.txt`） | 24 → 24（纯重建） | `uv pip check` + 锁文件逐项版本一致 + `/api/faults` 200（见「七」） |
 | 2026-09-22 | backend：迁移 uv 工作流（requirements.txt/lock.txt → pyproject.toml + uv.lock，`uv sync` 复现） | 24 → 24（锁定格式变更，版本零漂移） | uv.lock 与旧锁逐项对比 + `uv sync` 全命中 + `uv pip check` + `/api/faults` 200（见「八」） |
+| 2026-09-29 | backend：`uv add --dev pytest httpx`（阶段二 P1 测试体系，dev 依赖组，不进运行时） | 24 → 33（+2 直接 +7 传递） | `pyproject.toml [dependency-groups] dev` + `uv.lock` + `uv run pytest` 72 通过（见「九」） |
 | 2026-09-18 | frontend：`npm install`（Vue 3.4 / Vite 4.5 / Element Plus 2.5 / TanStack Query v4 / Zod 3 链） | 0 → 75 | `package-lock.json` + `npm ls --depth=0`（见「四」） |
 
 ## 二、版本锁定决策（2026-09-18）
@@ -133,3 +134,12 @@
 - **删除证据链**：requirements 两文件的全部引用点（README 目录树 / 安装流程 / 依赖管理节、本台账）已同步更新；`backend/dev.bat` 仅在「环境缺失」错误提示中引用 requirements.txt（本地脚本，被 .gitignore 忽略，GBK 编码未改动），无功能依赖
 - **运行验证**：`uv pip check` → `All installed packages are compatible`（18ms）；`.venv\Scripts\python.exe -m alembic current` → `a74bf448a946 (head)`；uvicorn 启动后 `GET /api/faults` → 200（服务日志证实）
 - **依赖边界**：无任何包版本变化（24 项与旧锁逐项一致）；pyproject.toml + uv.lock 新增入库，requirements 两文件删除
+
+## 九、backend 测试依赖 pytest + httpx（dev 组）（2026-09-29 · 阶段二 P1）
+
+- **背景**：阶段二计划 P1「测试体系化」：pytest 分层测试（schemas / crud / API 集成 / 错误路径）+ httpx `ASGITransport` 走完整请求链路；经用户确认方案后引入（规则 2.5）
+- **命令**：`backend/` 下 `uv add --dev pytest httpx` → 解析 35 包，安装 **9 包**：pytest 9.1.1、httpx 0.28.1（直接）+ 传递依赖 certifi 2026.7.22、colorama 0.4.6、httpcore 1.0.9、iniconfig 2.3.0、packaging 26.3、pluggy 1.6.0、pygments 2.21.0（安装日志原文）
+- **声明与锁同步**：`pyproject.toml` 新增 `[dependency-groups] dev = ["httpx>=0.28.1", "pytest>=9.1.1"]`（uv 自动写入）；`uv.lock` 同步更新；dev 组仅开发期安装，**不进运行时依赖面**（Docker 镜像等生产链路不受影响）
+- **配套配置**：`pyproject.toml` 新增 `[tool.pytest.ini_options]`（testpaths=tests、pythonpath="."、addopts="-v --tb=short"）
+- **运行验证**：`uv run pytest` → **72 passed**（Python 3.14.7 + pytest 9.1.1 兼容性实测通过）；红绿闭环演练：临时注释 crud.py「done 不可逆」规则 → 3 条测试变红（test_e6×2 + API 层 test_e5）→ 恢复后复绿（`git diff` 证实 crud.py 与 HEAD 零差异）；开发库 `fault_tracker.db` SHA256 测试前后一致（内存库隔离生效）
+- **依赖边界**：未动任何运行时包版本；新增文件仅 `backend/tests/`（conftest.py + 4 个测试文件）

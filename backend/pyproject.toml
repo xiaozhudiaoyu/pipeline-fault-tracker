@@ -30,3 +30,14 @@ package = false                     # 应用项目：不构建、不分发（显
 constraint-dependencies = [
     "watchfiles==1.2.0",
 ]
+
+[dependency-groups]
+dev = [
+    "httpx>=0.28.1",
+    "pytest>=9.1.1",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]               # 只收集 tests/ 目录，避免误扫 alembic/、seed 等脚本
+pythonpath = ["."]                  # 把 backend/ 加入 sys.path，测试里 import app.* 才可解析（package=false 不装包）
+addopts = "-v --tb=short"           # 逐条列出用例名 + 精简回溯，与阶段二计划「uv run pytest -v 全绿」对齐

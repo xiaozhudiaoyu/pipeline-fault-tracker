@@ -21,6 +21,7 @@ dependencies = [
     # ---- ORM / 数据库 ----
     "SQLAlchemy>=2.0",                # 需求文档指定 SQLAlchemy 2；SQLite 驱动为 Python 内置，无需额外安装
     "alembic>=1.20",                  # 数据库迁移（D2 引入）；Mako 为其 autogenerate 模板渲染的传递依赖
+    "psycopg[binary]>=3.3.6",         # PostgreSQL 驱动（阶段二 P3）；[binary] 含预编译 libpq，SQLAlchemy URL 用 postgresql+psycopg://
 ]
 
 [tool.uv]

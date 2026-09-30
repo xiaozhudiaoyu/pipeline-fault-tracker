@@ -14,6 +14,7 @@
 | 2026-09-21 | backend：uv 重建虚拟环境（删 pip venv → `uv venv` + `uv pip install -r requirements.lock.txt`） | 24 → 24（纯重建） | `uv pip check` + 锁文件逐项版本一致 + `/api/faults` 200（见「七」） |
 | 2026-09-22 | backend：迁移 uv 工作流（requirements.txt/lock.txt → pyproject.toml + uv.lock，`uv sync` 复现） | 24 → 24（锁定格式变更，版本零漂移） | uv.lock 与旧锁逐项对比 + `uv sync` 全命中 + `uv pip check` + `/api/faults` 200（见「八」） |
 | 2026-09-29 | backend：`uv add --dev pytest httpx`（阶段二 P1 测试体系，dev 依赖组，不进运行时） | 24 → 33（+2 直接 +7 传递） | `pyproject.toml [dependency-groups] dev` + `uv.lock` + `uv run pytest` 72 通过（见「九」） |
+| 2026-09-30 | backend：`uv add "psycopg[binary]"`（阶段二 P3 PostgreSQL 驱动，运行时依赖） | 33 → 36（+1 直接 +2 传递） | `pyproject.toml dependencies` + `uv.lock`（+91 行）+ 安装日志（见「十」） |
 | 2026-09-18 | frontend：`npm install`（Vue 3.4 / Vite 4.5 / Element Plus 2.5 / TanStack Query v4 / Zod 3 链） | 0 → 75 | `package-lock.json` + `npm ls --depth=0`（见「四」） |
 
 ## 二、版本锁定决策（2026-09-18）
@@ -143,3 +144,11 @@
 - **配套配置**：`pyproject.toml` 新增 `[tool.pytest.ini_options]`（testpaths=tests、pythonpath="."、addopts="-v --tb=short"）
 - **运行验证**：`uv run pytest` → **72 passed**（Python 3.14.7 + pytest 9.1.1 兼容性实测通过）；红绿闭环演练：临时注释 crud.py「done 不可逆」规则 → 3 条测试变红（test_e6×2 + API 层 test_e5）→ 恢复后复绿（`git diff` 证实 crud.py 与 HEAD 零差异）；开发库 `fault_tracker.db` SHA256 测试前后一致（内存库隔离生效）
 - **依赖边界**：未动任何运行时包版本；新增文件仅 `backend/tests/`（conftest.py + 4 个测试文件）
+
+## 十、backend PostgreSQL 驱动 psycopg[binary]（2026-09-30 · 阶段二 P3）
+
+- **背景**：阶段二计划 P3「SQLite → PostgreSQL」：compose 新增 `postgres:16-alpine` 服务，backend 通过 `DATABASE_URL=postgresql+psycopg://...` 切换方言（迁移路径选 a 保守：建表仍靠 `create_all(checkfirst=True)`，Alembic 仅作练习产物）；经用户确认后引入（规则 2.5），与功能改动分通道单独提交（规则 3.5）
+- **命令**：`backend/` 下 `uv add "psycopg[binary]"` → 解析 38 包，安装 **3 包**：psycopg 3.3.6（直接）+ 传递依赖 psycopg-binary 3.3.6（预编译 libpq，免本机装 PostgreSQL 客户端库）、tzdata 2026.4（psycopg 3 声明的 IANA 时区数据，Windows 无系统 zoneinfo 时兜底）（安装日志原文）
+- **声明与锁同步**：`pyproject.toml` `dependencies` 新增 `"psycopg[binary]>=3.3.6"`（ORM/数据库 分组，含用途注释）；`uv.lock` 同步更新（git diff +91 行）；与「九」dev 组不同，本包属**运行时依赖**，会进入 Docker 镜像（`uv sync --frozen --no-dev`）
+- **运行验证**：安装后 `uv run pytest` 全绿（见提交前验证报告）；PG 容器内全闭环验证见 P3 交付说明
+- **依赖边界**：未动任何既有包版本（git diff 仅 pyproject.toml +1 行、uv.lock +91 行，无删改）；SQLite 开发库路线不变，本地默认仍走 `config.py` 的 SQLite URL，PG 仅由 compose 环境变量注入

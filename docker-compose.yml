@@ -1,19 +1,37 @@
-# 编排定义：一条命令起前后端双服务（D4 练习）。
+# 编排定义：一条命令起 PostgreSQL + 前后端三服务（P3：SQLite → PostgreSQL）。
 # 使用：docker compose up -d --build
-# 停止：docker compose down
-# 注意：backend 用 bind mount（~/pft-bind）持久化，数据落在宿主机目录；
-# down / down -v 都不会删它（down -v 只删 named volume），手动删目录才丢数据
+# 停止：docker compose down（保留数据卷）/ down -v（连 pft-pgdata 一起删）
+# 数据持久化：PG 数据落在 named volume pft-pgdata，down 不删、down -v 才删；
+# 与 D4 的 SQLite bind mount（~/pft-bind）形态不同，本次改为服务端 PG + named volume。
 
 services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      # 首次启动时 postgres 镜像用这三个变量初始化库/用户/密码（仅空数据卷时生效）
+      POSTGRES_DB: pft
+      POSTGRES_USER: pft
+      POSTGRES_PASSWORD: pft_pass
+    volumes:
+      # named volume：PG 数据目录持久化，容器重建不丢；down -v 才会删
+      - pft-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      # pg_isready 是 postgres 镜像自带的就绪探针，比 TCP 探活更准（等的是“能接受连接”）
+      test: ["CMD-SHELL", "pg_isready -U pft -d pft"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
   backend:
     build: ./backend
     environment:
-      # 与挂载点对齐：数据库文件落在容器内 /app/data（bind mount 到宿主机 ~/pft-bind）
-      DATABASE_URL: sqlite:///./data/fault_tracker.db
-    volumes:
-      # bind mount：数据库直接落在宿主机（WSL 家目录）的 ~/pft-bind 下，
-      # 可直接 ls/备份；与 D2 的单容器命令形态一致
-      - ~/pft-bind:/app/data
+      # 方言切换点：URL scheme 换成 postgresql+psycopg 即驱动 SQLAlchemy 用 psycopg 连 PG；
+      # host 用 compose 服务名 postgres（同网络内 DNS 解析），端口 5432；建表靠启动 create_all
+      DATABASE_URL: postgresql+psycopg://pft:pft_pass@postgres:5432/pft
+    depends_on:
+      postgres:
+        # 等 PG 健康（能接受连接）再启 backend，否则 backend 启动即连库会失败
+        condition: service_healthy
     healthcheck:
       # slim 镜像无 curl，用系统 python 的 urllib 探活（探活端点 /api/health）
       test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://127.0.0.1:8000/api/health')"]
@@ -30,3 +48,7 @@ services:
         # 关键概念：depends_on 只保证【启动顺序】，不保证【就绪】；
         # 加 condition: service_healthy 后，等 backend 健康检查通过才启动 frontend
         condition: service_healthy
+
+volumes:
+  # named volume 声明：PG 数据目录，生命周期独立于容器（down 不删、down -v 才删）
+  pft-pgdata:

@@ -15,7 +15,12 @@
 import os
 
 # ---- ① 环境隔离：必须先于任何 app.* 导入 ----
-os.environ["DATABASE_URL"] = "sqlite:///:memory:"
+# 测试库连接串：默认内存 SQLite（零依赖、无需外部服务，与引入 PG 前行为完全一致）；
+# 设 TEST_DATABASE_URL 可整套切到 PostgreSQL —— P3 验证「同一套测试跑两种方言」，例如：
+#   TEST_DATABASE_URL=postgresql+psycopg://pft:pft_pass@localhost:5433/pft uv run pytest
+# 优先级：显式 TEST_DATABASE_URL > 默认内存 SQLite；该值同时用于 app 的 DATABASE_URL 与下面的 test_engine。
+_TEST_DB_URL = os.environ.get("TEST_DATABASE_URL", "sqlite:///:memory:")
+os.environ["DATABASE_URL"] = _TEST_DB_URL
 os.environ["DB_ECHO"] = "false"
 
 from collections.abc import AsyncIterator, Iterator  # noqa: E402
@@ -32,17 +37,22 @@ from app.main import app  # noqa: E402
 from app.models import Base  # noqa: E402
 
 
-# ---- 测试专用 engine：内存库 + StaticPool ----
+# ---- 测试专用 engine：按方言选择连接参数与连接池 ----
 # 为什么不直接用 app.database.engine？
 #   SQLite 的 :memory: 库是「每个连接一份独立数据」；默认连接池会发放多个连接，
 #   建表的连接和查询的连接可能不是同一个 → 数据互相看不见。
 #   StaticPool 强制所有 session 复用同一连接，共享同一份内存数据。
+#   PostgreSQL 是服务端库，数据对所有连接可见，用默认连接池即可，
+#   且【不能】传 SQLite 专属的 check_same_thread（psycopg 不认，会 TypeError）——与 database.py 的方言分支同理。
 #   （app 自己的 engine 在测试中不承担读写：get_db 已被依赖覆盖，init_models 不触发。）
-test_engine: Engine = create_engine(
-    "sqlite:///:memory:",
-    connect_args={"check_same_thread": False},
-    poolclass=StaticPool,
-)
+if _TEST_DB_URL.startswith("sqlite"):
+    test_engine: Engine = create_engine(
+        _TEST_DB_URL,
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+else:
+    test_engine: Engine = create_engine(_TEST_DB_URL)
 
 # ---- 测试 session 工厂：参数与 app.database.SessionLocal 完全一致 ----
 TestingSessionLocal = sessionmaker(

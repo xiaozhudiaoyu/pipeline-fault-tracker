@@ -1,9 +1,11 @@
-# 模块：engine 与 session（SQLAlchemy 2 · SQLite 版）。
+# 模块：engine 与 session（SQLAlchemy 2 · 多方言：SQLite 开发库 / PostgreSQL 容器库）。
 #
-# 与 day15_orm/database.py（MySQL 版）的区别：
-#   · SQLite 是文件数据库，无需 pool_pre_ping / pool_recycle（没有服务端超时断连问题）；
-#   · SQLite 默认不支持多线程共享连接，FastAPI 多线程场景需 connect_args={"check_same_thread": False}；
-#   · 建表用 Base.metadata.create_all()，需求文档明确"允许采用自动建表方式初始化 SQLite"。
+# 方言由 settings.database_url 的 scheme 决定，本模块据此选择连接参数：
+#   · SQLite（本地开发默认）：文件数据库，无需 pool_pre_ping / pool_recycle（没有服务端超时断连问题）；
+#     默认不支持多线程共享连接，FastAPI 多线程场景需 connect_args={"check_same_thread": False}。
+#   · PostgreSQL（compose 注入 postgresql+psycopg://...）：服务端数据库，psycopg 驱动
+#     【不接受】check_same_thread 参数（SQLite 专属），故按方言分支，仅在 SQLite 时传它。
+#   · 建表统一用 Base.metadata.create_all()（迁移路径 a：保守，Alembic 仅作练习产物）。
 #
 # Engine 与 Session 的职责区分（同 day15_orm）：
 #   Engine  = 连接池 + 方言，进程级单例，线程安全；
@@ -19,13 +21,18 @@ from .config import settings
 from .models import Base
 
 # ---- Engine（进程级单例）----
-# check_same_thread=False：SQLite 默认只允许创建它的线程使用连接；
-#   FastAPI 用线程池跑同步路由，同一个 engine 会被多个线程访问，必须关掉这个检查。
-#   安全性由 SQLAlchemy 的连接池保证（每个线程从池里取独立连接）。
+# 按方言分支连接参数：
+#   SQLite 需 check_same_thread=False —— 它默认只允许创建连接的线程使用该连接；
+#     FastAPI 用线程池跑同步路由，同一个 engine 会被多个线程访问，必须关掉这个检查。
+#     安全性由 SQLAlchemy 的连接池保证（每个线程从池里取独立连接）。
+#   PostgreSQL（psycopg）不认这个参数，传进去会 TypeError，故仅 SQLite 时传。
+_is_sqlite = settings.database_url.startswith("sqlite")
+_connect_args = {"check_same_thread": False} if _is_sqlite else {}
+
 engine: Engine = create_engine(
     settings.database_url,
     echo=settings.db_echo,
-    connect_args={"check_same_thread": False},
+    connect_args=_connect_args,
 )
 
 # ---- Session 工厂 ----

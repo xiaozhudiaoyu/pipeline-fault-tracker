@@ -93,14 +93,16 @@ npm run dev
 
 ## 六、基本验证步骤（业务闭环）
 
-1. **列表页**：默认按发生时间倒序展示故障；可用"流水线""状态"下拉筛选。
-2. **登记故障**：点击"登记故障"→ 填写流水线 / 发生位置 / 发生时间 / 故障现象 → 提交；表单有 Zod 前端校验，提交期间按钮 loading 禁用防重复点击。
-3. **查看详情**：点击列表任一行进入详情页，展示全部字段与当前状态。
-4. **推进状态**（详情页“状态推进”面板按当前状态只渲染合法目标）：
+1. **列表页**：默认按发生时间倒序展示故障；可用"流水线""状态""优先级"下拉筛选（三者可组合，清空即全部）；列表展示优先级标签（紧急红/普通灰）。
+2. **登记故障**：点击"登记故障"→ 填写流水线 / 发生位置 / 发生时间 / 故障现象，并可选优先级（普通/紧急，默认普通）→ 提交；表单有 Zod 前端校验，提交期间按钮 loading 禁用防重复点击。
+3. **查看详情**：点击列表任一行进入详情页，展示全部字段（含优先级）、当前状态。
+4. **修改优先级**（详情页"修改基础信息"面板的优先级下拉）：改后保存只更新优先级，**不改变处理状态**；成功/失败均有 ElMessage 提示，提交期间按钮禁用。非法取值（直连 API）返回 422 且不落库。
+5. **推进状态**（详情页“状态推进”面板按当前状态只渲染合法目标）：
    - 待处理 → 处理中：处理说明可选 → 提交；成功后详情即时刷新，右上角 ElMessage 提示“状态已更新”。
    - 待处理 / 处理中 → 已完成：处理说明**必填**；留空提交时后端返回 400 `handling_note_required`，前端对应字段标红。
-   - 已完成（终态）：面板锁定、不再渲染流转表单，提示“该故障已完成（终态），按业务规则不可再流转。”；若绕过前端直接调 API，后端返回 409 `invalid_transition`。
-5. **刷新持久化**：刷新页面或重启后端服务，数据仍在（SQLite 文件落盘）。
+   - 已完成（终态）：面板锁定、不再渲染流转表单，提示“该故障已完成（终态），按业务规则不可再流转。”；若绕过前端直接调 API，后端返回 409 `invalid_transition`。（优先级不受终态锁定限制，done 后仍可改。）
+6. **导出 CSV**：列表页"导出 CSV"按当前筛选（含优先级）导出全部匹配行，表头含 `priority` 列。
+7. **刷新持久化**：刷新页面或重启后端服务，数据与优先级仍在（SQLite 文件落盘）。
 
 ## 七、后端接口一览
 
@@ -110,10 +112,11 @@ npm run dev
 |---|---|---|---|
 | GET | `/api/pipelines` | 流水线列表（按 code 升序；前端登记/筛选下拉数据源，只读） | — |
 | POST | `/api/pipelines` | 新建流水线（前端未接入，供直接调用/扩展） | 409 `pipeline_code_duplicate` |
-| GET | `/api/faults` | 故障列表（`pipeline_id`/`status` 筛选、`page`/`size` 分页，按发生时间倒序） | 422 参数校验 |
+| GET | `/api/faults` | 故障列表（`pipeline_id`/`status`/`priority` 筛选、`page`/`size` 分页，按发生时间倒序） | 422 参数校验 |
+| GET | `/api/faults/export` | 导出 CSV（复用列表筛选口径含 `priority`，不分页，上限 10000 行，UTF-8 带 BOM） | 422 参数校验 |
 | GET | `/api/faults/{id}` | 故障详情 | 404 `fault_not_found` |
-| POST | `/api/faults` | 登记故障（201 + `Location` 头；occurred_at 不晚于当前时间、symptom 5~1000 字、location 首字符非空白） | 404 `pipeline_not_found` / 422 |
-| PATCH | `/api/faults/{id}` | 修改基础信息（location/symptom/handling_note，部分更新；前端详情页已接入） | 404 / 409 `handling_note_locked`（done 后说明锁定） / 422 |
+| POST | `/api/faults` | 登记故障（201 + `Location` 头；occurred_at 不晚于当前时间、symptom 5~1000 字、location 首字符非空白；priority 可选 normal/urgent、默认 normal） | 404 `pipeline_not_found` / 422 |
+| PATCH | `/api/faults/{id}` | 修改基础信息（location/symptom/handling_note/priority，部分更新；改 priority 不改状态；前端详情页已接入） | 404 / 409 `handling_note_locked`（done 后说明锁定） / 422 |
 | PATCH | `/api/faults/{id}/transition` | 推进状态（pending ↔ processing → done；handling_note 一旦提供 strip 后 ≥5 字） | 400 `handling_note_required` / 404 / 409 `invalid_transition` / 422 |
 
 ## 八、配置说明
@@ -147,9 +150,45 @@ npm run dev
 - **现有迁移**：
   - `843f28b00698` baseline —— 手写基线，照抄现有库真实 DDL（autogenerate 对已存在且一致的库产不出 CREATE）；现有库用 `stamp` 打标，空库可由此从零重建。
   - `a74bf448a946` —— 给 `pipeline_faults.occurred_at` 建索引 `ix_pipeline_faults_occurred_at`（列表页倒序排序/时间筛选的查询热点），与 models.py 的 `index=True` 一致。
+  - `b3e19c4d7a52` （第二阶段）—— 给 `pipeline_faults` 加 `priority` 列（normal/urgent，默认普通）。旧库升级时采“加列带 server_default='normal'”让存量行自动回填，随后用 `batch_alter_table` 摘掉默认值（SQLite 不支持 `ALTER COLUMN ... DROP DEFAULT`，必须走 batch；PG 上自动退化为普通 ALTER，双方言都能跑）。
+
+### 10.1 空库初始化（全新环境，无旧数据）
+
+> 适用：第一次搭建、或拿到一个空目录。下面命令均在 `backend/` 下执行。
+
+```powershell
+cd backend
+uv sync                                   # 装依赖（.venv 不存在时自动创建）
+Copy-Item .env.example .env               # 配置模板（默认 DATABASE_URL=sqlite:///./fault_tracker.db）
+# 确保目标库文件不存在（或是全新空文件）；若已有一份旧库想保留，走 10.2
+.venv\Scripts\python.exe -m alembic upgrade head   # 空库从零建到最新结构（含 priority 列）
+.venv\Scripts\python.exe seed.py                    # （可选）写入模拟数据
+```
+
+`upgrade head` 会依次跑完基线 + 索引 + priority 三个迁移，空库一次到位；此时库内已有 `alembic_version=b3e19c4d7a52`。
+
+### 10.2 旧库升级（已有自动建表产生、无 alembic_version 表的库）
+
+> 适用：上一版项目用 `Base.metadata.create_all()` 自动建表、表里已有故障记录，想接入迁移并升到含优先级的新结构。**不得通过删库/清数据/重录完成**（需求三.3）。
+
+```powershell
+cd backend
+# 1. 先备份旧库（升级前必做，回退手段）
+Copy-Item fault_tracker.db ..\process\fault_tracker.db.bak-p2-<日期>
+# 2. 打标：告诉 alembic “此库已在加 priority 前的版本”，只写版本号、不动数据
+.venv\Scripts\python.exe -m alembic stamp a74bf448a946
+# 3. 升到最新：仅执行差量（加 priority 列），已有故障统一回填 normal
+.venv\Scripts\python.exe -m alembic upgrade head
+```
+
+升级后验证（不启服务，直接查库）：`pipeline_faults` 多出 `priority` 列且全为 `normal`；原有记录的编号、处理状态、处理说明逐字段不变。若需回退：`alembic downgrade -1` 删列，或用备份文件覆盖回去（数据类变更需单独回数据，代码回退不等于数据恢复）。
+
+> 注：若旧库本身已经是本项目的开发库（已带 `alembic_version=a74bf448a946`，如仓库里的 `fault_tracker.db`），则跳过 `stamp`，直接 `upgrade head` 即可。
+
+> 迁移验证脚本（process/ 不入库）：`verify_p2_migration.py`（空库初始化 + fixture 旧库升级 + downgrade/重升）、`verify_p2_legacy_drill.py`（当前开发库副本的真实升级演练）。
 
 ## 十一、已知限制
 
 - 无认证 / 权限系统（需求未要求）。
-- 无单元测试 / CI（需求未要求；如需补充请单独说明）。
+- 后端测试为分层回归（tests/ 下 schemas/crud/API 三层，`uv run pytest` 执行），列表页操作等界面态验证依赖人工按第六章步骤走查。
 - SQLite 单文件数据库，不适用于高并发生产环境。

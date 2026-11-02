@@ -15,7 +15,7 @@ from datetime import datetime, timedelta, timezone
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from .models import FaultStatus
+from .models import FaultPriority, FaultStatus
 
 
 # ── 流水线（主数据）──────────────────────────────────────────────────────
@@ -60,6 +60,9 @@ class FaultCreate(BaseModel):
     )
     occurred_at: datetime = Field(description="故障发生时间（业务时间，ISO 8601 格式），不得晚于当前时间")
     symptom: str = Field(min_length=5, max_length=1000, description="故障现象描述，5~1000 字")
+    # 优先级可选，缺省即普通（需求二.1）；非法取值（如 "high"）由枚举校验直接 422，
+    # 与 status 不同：登记时允许选优先级，但不允许选状态（防绕过流转校验的既有规则不变）。
+    priority: FaultPriority = Field(default=FaultPriority.normal, description="优先级：normal/urgent，默认普通")
 
     @field_validator("occurred_at")
     @classmethod
@@ -92,6 +95,7 @@ class FaultOut(BaseModel):
     occurred_at: datetime
     symptom: str
     status: FaultStatus
+    priority: FaultPriority
     handling_note: str | None = None
     created_at: datetime
     updated_at: datetime
@@ -146,6 +150,11 @@ class FaultUpdate(BaseModel):
         description="故障发生位置；首字符不得为空白",
     )
     symptom: str | None = Field(default=None, min_length=5, max_length=1000, description="故障现象描述，5~1000 字")
+    # 修改优先级与状态流转是两个端点：这里改 priority 不会碰 status（crud 只应用传了的字段）。
+    priority: FaultPriority | None = Field(
+        default=None,
+        description="优先级：normal/urgent；不传即不改，非法取值 422",
+    )
     handling_note: str | None = Field(
         default=None,
         min_length=5,

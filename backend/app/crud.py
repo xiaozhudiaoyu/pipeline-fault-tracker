@@ -26,7 +26,7 @@ from .exceptions import (
     PipelineCodeDuplicateError,
     PipelineNotFoundError,
 )
-from .models import FaultStatus, Pipeline, PipelineFault
+from .models import FaultPriority, FaultStatus, Pipeline, PipelineFault
 
 
 # ── 流水线（主数据）──────────────────────────────────────────────────────
@@ -67,13 +67,14 @@ def list_faults(
     *,
     pipeline_id: int | None = None,
     status: FaultStatus | None = None,
+    priority: FaultPriority | None = None,
     page: int = 1,
     size: int = 20,
 ) -> tuple[list[PipelineFault], int]:
     """分页查询故障列表，返回 (当前页记录, 总数)。
 
     需求要点：
-      · 按流水线、处理状态筛选（两个条件都可选，None 表示不限制）；
+      · 按流水线、处理状态、优先级筛选（三个条件都可选，None 表示不限制，可组合使用）；
       · 默认按发生时间倒序（"列表默认优先展示最近发生的故障"）；
       · 分页返回 total，前端分页组件据此算总页数。
 
@@ -94,6 +95,9 @@ def list_faults(
     if status is not None:
         stmt = stmt.where(PipelineFault.status == status)
         count_stmt = count_stmt.where(PipelineFault.status == status)
+    if priority is not None:
+        stmt = stmt.where(PipelineFault.priority == priority)
+        count_stmt = count_stmt.where(PipelineFault.priority == priority)
 
     total = db.scalar(count_stmt) or 0
     # 排序 + 分页：occurred_at 倒序；offset 跳过前面页，limit 取本页
@@ -111,6 +115,7 @@ def list_faults_for_export(
     *,
     pipeline_id: int | None = None,
     status: FaultStatus | None = None,
+    priority: FaultPriority | None = None,
     limit: int = EXPORT_MAX_ROWS,
 ) -> list[PipelineFault]:
     """导出用查询：筛选口径与 list_faults 完全一致，但【不分页】、有安全上限。
@@ -129,6 +134,8 @@ def list_faults_for_export(
         stmt = stmt.where(PipelineFault.pipeline_id == pipeline_id)
     if status is not None:
         stmt = stmt.where(PipelineFault.status == status)
+    if priority is not None:
+        stmt = stmt.where(PipelineFault.priority == priority)
 
     stmt = stmt.order_by(PipelineFault.occurred_at.desc()).limit(limit)
     return list(db.scalars(stmt))
@@ -159,6 +166,8 @@ def create_fault(db: Session, data: schemas.FaultCreate) -> PipelineFault:
     业务规则：
       · pipeline_id 必须指向已存在的流水线（get_pipeline 校验，不存在抛 404）；
       · 新故障一律置为 pending —— 不接受客户端指定初始状态，防止绕过状态流转校验；
+      · priority 由客户端选传（需求二.1 默认普通）：FaultCreate 缺省已填 normal，
+        这里照原值写入；非法取值在 schemas 层就 422，不会流到此处；
       · occurred_at 是用户填写的业务时间，created_at 由数据库 server_default 生成。
 
     返回前用 get_fault 重新查询：commit+refresh 后 pipeline 关联未加载，
@@ -171,6 +180,7 @@ def create_fault(db: Session, data: schemas.FaultCreate) -> PipelineFault:
         occurred_at=data.occurred_at,
         symptom=data.symptom,
         status=FaultStatus.pending,  # 强制初始状态，忽略任何客户端传入
+        priority=data.priority,  # 客户端选传的优先级（未传时 schema 缺省 normal）
     )
     db.add(fault)
     db.commit()
@@ -178,11 +188,12 @@ def create_fault(db: Session, data: schemas.FaultCreate) -> PipelineFault:
 
 
 def update_fault(db: Session, fault_id: int, data: schemas.FaultUpdate) -> PipelineFault:
-    """修改故障基础信息（location / symptom / handling_note），不涉及状态流转。
+    """修改故障基础信息（location / symptom / handling_note / priority），不涉及状态流转。
 
     业务规则：done 后 handling_note 锁定 —— 完成时的说明是"结案结论"，
     事后不可篡改（保追溯性），违反抛 HandlingNoteLockedError（409）。
-    location / symptom 不受此限：错别字修正等基础信息维护在 done 后仍合理。
+    location / symptom / priority 不受此限：需求二.1 "修改优先级不改变处理状态"，
+    done 后改优先级仍合理；exclude_unset 只应用传了的字段，status 列不在 changes 里就不会被动。
 
     exclude_unset=True：只取客户端"传了的"字段 —— 没传即不改；
     handling_note 的显式 null 已在 schemas.FaultUpdate 层拒绝（422），到这里不会出现。

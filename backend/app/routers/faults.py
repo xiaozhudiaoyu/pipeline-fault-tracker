@@ -1,11 +1,11 @@
 # 路由模块：/api/faults —— 故障记录接口（本项目核心业务）。
 #
 # 接口对应需求"二、业务功能"（导出为 P4 迭代新增）：
-#   GET    /api/faults              故障查询（按流水线/状态筛选，分页，occurred_at 倒序）
+#   GET    /api/faults              故障查询（按流水线/状态/优先级筛选，分页，occurred_at 倒序）
 #   GET    /api/faults/export       导出 CSV（复用列表筛选口径，不分页，流式响应）
 #   POST   /api/faults              故障登记
 #   GET    /api/faults/{id}         单条详情
-#   PATCH  /api/faults/{id}         修改基础信息（location/symptom/handling_note，done 后说明锁定）
+#   PATCH  /api/faults/{id}         修改基础信息（location/symptom/handling_note/priority，done 后说明锁定）
 #   PATCH  /api/faults/{id}/transition  故障处理（状态流转 + 处理说明）
 #
 # 路由层只管"收发请求"，业务规则（状态流转校验）在 crud 层，错误结构由 exceptions 统一。
@@ -24,7 +24,7 @@ from sqlalchemy.orm import Session
 
 from .. import crud, schemas
 from ..database import get_db
-from ..models import FaultStatus
+from ..models import FaultPriority, FaultStatus
 
 router = APIRouter(prefix="/api/faults", tags=["faults"])
 
@@ -33,6 +33,7 @@ router = APIRouter(prefix="/api/faults", tags=["faults"])
 def list_faults(
     pipeline_id: int | None = Query(default=None, ge=1, description="按流水线 ID 筛选，不传=全部"),
     status: FaultStatus | None = Query(default=None, description="按处理状态筛选：pending/processing/done"),
+    priority: FaultPriority | None = Query(default=None, description="按优先级筛选：normal/urgent，第二阶段需求"),
     page: int = Query(default=1, ge=1, description="页码，从 1 开始"),
     size: int = Query(default=20, ge=1, le=100, description="每页条数，1~100，防止一次拉取过多"),
     db: Session = Depends(get_db),
@@ -40,15 +41,16 @@ def list_faults(
     """分页查询故障列表，默认按发生时间倒序（需求："列表默认优先展示最近发生的故障"）。
 
     参数取值规则（FastAPI 核心）：这些参数都不在路径里、且是标量/枚举类型，
-    故全部按【查询参数】取值，即 /api/faults?pipeline_id=1&status=done&page=1&size=20。
+    故全部按【查询参数】取值，即 /api/faults?pipeline_id=1&status=done&priority=urgent&page=1&size=20。
       · status: FaultStatus | None —— FastAPI 自动把字符串 "done" 转成 FaultStatus.done 枚举，
         非法值（如 ?status=xxx）直接 422，业务代码拿到的一定是合法枚举或 None；
+      · priority 同理（需求二.2：优先级筛选可与流水线/状态筛选组合使用）；
       · Query(ge=1, le=100) —— 查询参数也能带校验约束，越界直接 422。
 
     返回包一层 FaultListOut（items+total+page+size）：前端分页组件需要 total 算总页数。
     """
     items, total = crud.list_faults(
-        db, pipeline_id=pipeline_id, status=status, page=page, size=size
+        db, pipeline_id=pipeline_id, status=status, priority=priority, page=page, size=size
     )
     return schemas.FaultListOut(
         items=[schemas.FaultOut.model_validate(f) for f in items],
@@ -58,8 +60,8 @@ def list_faults(
     )
 
 
-# 导出 CSV 表头（与需求文档第 2 节 10 列一致）：冗余 pipeline_code/name 便于离线阅读；
-# 列顺序即导出顺序，改动前先看需求文档。
+# 导出 CSV 表头（需求文档第 2 节原 10 列 + 第二阶段追加 priority 列，排在 status 后同类相邻）：
+# 冗余 pipeline_code/name 便于离线阅读；列顺序即导出顺序，改动前先看需求文档。
 EXPORT_CSV_HEADER = [
     "id",
     "pipeline_code",
@@ -68,6 +70,7 @@ EXPORT_CSV_HEADER = [
     "occurred_at",
     "symptom",
     "status",
+    "priority",
     "handling_note",
     "created_at",
     "closed_at",
@@ -97,6 +100,7 @@ def _csv_datetime(value: datetime | None) -> str:
 def export_faults(
     pipeline_id: int | None = Query(default=None, ge=1, description="按流水线 ID 筛选，不传=全部"),
     status: FaultStatus | None = Query(default=None, description="按处理状态筛选：pending/processing/done"),
+    priority: FaultPriority | None = Query(default=None, description="按优先级筛选：normal/urgent"),
     db: Session = Depends(get_db),
 ) -> StreamingResponse:
     """导出当前筛选条件下的全部故障为 CSV（不分页，上限 crud.EXPORT_MAX_ROWS 行）。
@@ -114,7 +118,9 @@ def export_faults(
     错误路径只有 422（参数校验，统一 ErrorOut 结构）；空结果不是错误 ——
     返回只含表头的 CSV（需求文档 D1 决策）。
     """
-    faults = crud.list_faults_for_export(db, pipeline_id=pipeline_id, status=status)
+    faults = crud.list_faults_for_export(
+        db, pipeline_id=pipeline_id, status=status, priority=priority
+    )
 
     def _rows() -> Iterator[bytes]:
         # BOM 单独作为首块产出：它必须在文件最前面，且不属于 csv 内容
@@ -136,6 +142,7 @@ def export_faults(
                     _csv_datetime(f.occurred_at),
                     f.symptom,
                     f.status.value,
+                    f.priority.value,
                     f.handling_note if f.handling_note is not None else "",
                     _csv_datetime(f.created_at),
                     _csv_datetime(f.closed_at),

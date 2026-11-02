@@ -44,6 +44,22 @@ class FaultStatus(str, enum.Enum):
     done = "done"              # 已完成
 
 
+class FaultPriority(str, enum.Enum):
+    """故障优先级（第二阶段需求）。
+
+    与 FaultStatus 同为 (str, enum.Enum)：JSON 序列化成字符串、Pydantic 直接做校验、
+    SQLAlchemy Enum 列在 SQLite 上渲染成 VARCHAR（无 CHECK 约束，同 status）。
+
+    业务规则（需求二.1）：
+      · 新建故障默认 normal（普通）；
+      · 详情中可修改，修改优先级【不改变】处理状态 —— 两者是独立维度；
+      · 旧库升级时已有故障统一回填 normal（见 alembic 迁移）。
+    """
+
+    normal = "normal"  # 普通
+    urgent = "urgent"  # 紧急
+
+
 class Pipeline(Base):
     """流水线主数据表。
 
@@ -158,6 +174,16 @@ class PipelineFault(Base):
         default=FaultStatus.pending,
         nullable=False,
         comment="处理状态：pending/processing/done",
+    )
+
+    # ---- 优先级（第二阶段需求）----
+    # 与 status 同构：Enum 列 + Python 端 default，普通/紧急两档，登记时不选即 normal。
+    # 独立于 status：修改 priority 不影响处理状态（crud.update_fault 只应用传了的字段）。
+    priority: Mapped[FaultPriority] = mapped_column(
+        Enum(FaultPriority),
+        default=FaultPriority.normal,
+        nullable=False,
+        comment="优先级：normal/urgent，默认普通",
     )
 
     # handling_note 在状态推进时填写；pending → done 或 processing → done 时必填（crud 层校验）。

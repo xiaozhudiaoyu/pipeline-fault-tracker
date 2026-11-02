@@ -33,7 +33,7 @@ from app.models import FaultStatus
 # 所有 async 测试统一跑 anyio 插件的 asyncio 后端（见 conftest.anyio_backend）
 pytestmark = pytest.mark.anyio
 
-# 与 routers/faults.py 的表头保持同源断言基准（10 列，顺序即导出顺序）
+# 与 routers/faults.py 的表头保持同源断言基准（原 10 列 + 第二阶段 priority 列，顺序即导出顺序）
 EXPECTED_HEADER = [
     "id",
     "pipeline_code",
@@ -42,6 +42,7 @@ EXPECTED_HEADER = [
     "occurred_at",
     "symptom",
     "status",
+    "priority",
     "handling_note",
     "created_at",
     "closed_at",
@@ -108,12 +109,13 @@ class TestExportHappyPath:
         # 冗余列内容正确：pipeline_code/name 展平、status 用枚举值
         assert rows[1][1] == "LINE-A" and rows[1][2] == "名称-LINE-A"
         assert rows[1][6] == "pending"
+        assert rows[1][7] == "normal"  # priority（第二阶段新增列，排在 status 后）
         # 时间列格式：YYYY-MM-DD HH:mm:ss（与前端展示一致，不带 ISO 的 "T"）；
         # occurred_at/created_at 有值，未结案的 closed_at 为空串
         ts_pattern = re.compile(r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$")
         assert ts_pattern.fullmatch(rows[1][4]), rows[1][4]  # occurred_at
-        assert ts_pattern.fullmatch(rows[1][8]), rows[1][8]  # created_at
-        assert rows[1][9] == ""  # closed_at（pending 未结案）
+        assert ts_pattern.fullmatch(rows[1][9]), rows[1][9]  # created_at
+        assert rows[1][10] == ""  # closed_at（pending 未结案）
 
     async def test_n2_export_filters_match_list_scope(self, client):
         """N2：pipeline_id / status 筛选只含匹配行，口径与列表接口一致。"""

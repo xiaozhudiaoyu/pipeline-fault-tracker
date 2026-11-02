@@ -7,7 +7,8 @@ import { useRouter } from 'vue-router'
 import { useFaultMutations } from '../composables/useFaultMutations'
 import { usePipelines } from '../composables/usePipelines'
 import { faultCreateSchema } from '../schemas/fault'
-import type { FaultCreatePayload } from '../types/fault'
+import { FAULT_PRIORITY_OPTIONS } from '../types/fault'
+import type { FaultCreatePayload, FaultPriority } from '../types/fault'
 
 const router = useRouter()
 const { data: pipelines, isLoading: pipelinesLoading } = usePipelines()
@@ -16,16 +17,19 @@ const { create } = useFaultMutations()
 const submitting = create.isLoading
 
 // 表单模型：pipeline_id 未选时为 undefined；occurred_at 由 el-date-picker 按 value-format 写成 ISO 字符串。
+// priority 默认 normal（需求二.1）：两档单选均有合法值，不存在"未选"态。
 const form = reactive<{
   pipeline_id: number | undefined
   location: string
   occurred_at: string
   symptom: string
+  priority: FaultPriority
 }>({
   pipeline_id: undefined,
   location: '',
   occurred_at: '',
   symptom: '',
+  priority: 'normal',
 })
 
 // 字段级错误：Zod 校验失败时填充，绑定到对应 el-form-item 的 error 属性（红字提示）。
@@ -61,6 +65,7 @@ function onReset() {
   form.location = ''
   form.occurred_at = ''
   form.symptom = ''
+  form.priority = 'normal'
   clearErrors()
 }
 </script>
@@ -115,6 +120,17 @@ function onReset() {
           show-word-limit
           class="form-control"
         />
+      </el-form-item>
+
+      <el-form-item label="优先级" required>
+        <!-- 二选一用 radio 更直观；默认普通（schema 侧也有缺省兑底）。
+             注：本机 element-plus 2.5.6 的 el-radio 只有 label prop（value prop 自 2.6 才引入，已核源码），
+             选中值即 :label 绑定的值。 -->
+        <el-radio-group v-model="form.priority">
+          <el-radio v-for="opt in FAULT_PRIORITY_OPTIONS" :key="opt.value" :label="opt.value">
+            {{ opt.label }}
+          </el-radio>
+        </el-radio-group>
       </el-form-item>
 
       <el-form-item>

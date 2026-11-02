@@ -4,6 +4,9 @@
 // 故障状态枚举（后端 models.FaultStatus 的值：pending / processing / done）
 export type FaultStatus = 'pending' | 'processing' | 'done'
 
+// 故障优先级枚举（第二阶段，后端 models.FaultPriority：normal / urgent）
+export type FaultPriority = 'normal' | 'urgent'
+
 // 流水线（后端 PipelineOut）
 export interface Pipeline {
   id: number
@@ -21,6 +24,7 @@ export interface Fault {
   occurred_at: string // ISO 8601
   symptom: string
   status: FaultStatus
+  priority: FaultPriority
   handling_note: string | null
   created_at: string // ISO 8601
   updated_at: string // ISO 8601
@@ -39,16 +43,19 @@ export interface FaultList {
 export interface FaultListParams {
   pipeline_id?: number
   status?: FaultStatus
+  priority?: FaultPriority
   page?: number
   size?: number
 }
 
-// POST /api/faults 请求体（后端 FaultCreate：不含 status/handling_note/closed_at，新故障由后端置 pending）
+// POST /api/faults 请求体（后端 FaultCreate：不含 status/handling_note/closed_at，新故障由后端置 pending；
+// priority 可选——不传即后端缺省 normal，需求二.1）
 export interface FaultCreatePayload {
   pipeline_id: number
   location: string
   occurred_at: string // ISO 8601
   symptom: string
+  priority?: FaultPriority
 }
 
 // PATCH /api/faults/{id}/transition 请求体（后端 FaultTransition）
@@ -58,12 +65,14 @@ export interface FaultTransitionPayload {
 }
 
 // PATCH /api/faults/{id} 请求体（后端 FaultUpdate）——修改基础信息，不含状态流转。
-// 三字段全部可选：后端用 exclude_unset 只应用「传了的」字段，故前端只发有改动的键。
+// 全部可选：后端用 exclude_unset 只应用「传了的」键，故前端只发有改动的键。
 // 注意：handling_note 不接受显式 null（后端 422），不改就不发这个键；done 后不可改（后端 409）。
+// priority 不受 done 锁定限制，且改它不会改状态（后端需求二.1）。
 export interface FaultUpdatePayload {
   location?: string
   symptom?: string
   handling_note?: string
+  priority?: FaultPriority
 }
 
 // 统一错误结构（后端 ErrorOut / FieldErrorOut）
@@ -90,6 +99,18 @@ export const FAULT_STATUS_OPTIONS: { value: FaultStatus; label: string }[] = [
   { value: 'pending', label: FAULT_STATUS_META.pending.label },
   { value: 'processing', label: FAULT_STATUS_META.processing.label },
   { value: 'done', label: FAULT_STATUS_META.done.label },
+]
+
+// 优先级展示元数据（同 FAULT_STATUS_META 手法）：紧急用 danger 醒目，普通用 info 低调。
+export const FAULT_PRIORITY_META: Record<FaultPriority, { label: string; tag: 'info' | 'danger' }> = {
+  normal: { label: '普通', tag: 'info' },
+  urgent: { label: '紧急', tag: 'danger' },
+}
+
+// 优先级下拉选项（顺序固定：普通 → 紧急，与默认值口径一致）
+export const FAULT_PRIORITY_OPTIONS: { value: FaultPriority; label: string }[] = [
+  { value: 'normal', label: FAULT_PRIORITY_META.normal.label },
+  { value: 'urgent', label: FAULT_PRIORITY_META.urgent.label },
 ]
 
 // 状态机合法流转表：镜像后端 crud.transition_fault 的流转矩阵（后端是最终裁判，前端仅用于 UX——

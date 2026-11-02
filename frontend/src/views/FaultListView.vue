@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// 故障列表页：筛选（流水线 + 状态）+ 分页表格 + 错误提示。
+// 故障列表页：筛选（流水线 + 状态 + 优先级）+ 分页表格 + 错误提示。
 // 数据流：filters（reactive）→ params（computed，规范化空值）→ useFaultList（TanStack Query，key 随 params 变化自动 refetch）。
 // 组件拆分：FaultFilterBar / FaultTable 为受控纯展示组件，本页持有查询状态与路由跳转逻辑。
 import { computed, reactive, watch } from 'vue'
@@ -9,7 +9,7 @@ import FaultFilterBar from '../components/FaultFilterBar.vue'
 import FaultTable from '../components/FaultTable.vue'
 import { exportFaultsCsv } from '../api/faults'
 import { useFaultList } from '../composables/useFaultList'
-import type { FaultListParams, FaultStatus } from '../types/fault'
+import type { FaultListParams, FaultPriority, FaultStatus } from '../types/fault'
 
 const router = useRouter()
 
@@ -17,11 +17,13 @@ const router = useRouter()
 const filters = reactive<{
   pipeline_id?: number
   status?: FaultStatus
+  priority?: FaultPriority
   page: number
   size: number
 }>({
   pipeline_id: undefined,
   status: undefined,
+  priority: undefined,
   page: 1,
   size: 20,
 })
@@ -31,6 +33,7 @@ const filters = reactive<{
 const params = computed<FaultListParams>(() => ({
   pipeline_id: filters.pipeline_id || undefined,
   status: filters.status || undefined,
+  priority: filters.priority || undefined,
   page: filters.page,
   size: filters.size,
 }))
@@ -39,7 +42,7 @@ const { data, isFetching, isError, error } = useFaultList(params)
 
 // 筛选条件变化时回到第一页（否则可能停在超出新结果范围的页码）
 watch(
-  [() => filters.pipeline_id, () => filters.status],
+  [() => filters.pipeline_id, () => filters.status, () => filters.priority],
   () => {
     filters.page = 1
   }
@@ -63,8 +66,8 @@ function goDetail(id: number) {
 // 导出 CSV：携当前筛选条件（不含分页 —— 导出语义是"筛选出的全部行"，需求文档 D2）。
 // 取 params.value 而非 filters：params 已把 clearable 清空后的 '' 收敛成 undefined，口径与列表查询一致。
 function onExport() {
-  const { pipeline_id, status } = params.value
-  exportFaultsCsv({ pipeline_id, status })
+  const { pipeline_id, status, priority } = params.value
+  exportFaultsCsv({ pipeline_id, status, priority })
 }
 </script>
 
@@ -78,7 +81,12 @@ function onExport() {
       </div>
     </header>
 
-    <FaultFilterBar v-model:pipeline="filters.pipeline_id" v-model:status="filters.status" class="list-block" />
+    <FaultFilterBar
+      v-model:pipeline="filters.pipeline_id"
+      v-model:status="filters.status"
+      v-model:priority="filters.priority"
+      class="list-block"
+    />
 
     <el-alert
       v-if="isError"

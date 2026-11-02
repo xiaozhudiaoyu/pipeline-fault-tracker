@@ -7,7 +7,8 @@ import { ElMessage } from 'element-plus'
 
 import { useFaultMutations } from '../composables/useFaultMutations'
 import { faultUpdateSchema } from '../schemas/fault'
-import type { Fault, FaultUpdatePayload } from '../types/fault'
+import { FAULT_PRIORITY_OPTIONS } from '../types/fault'
+import type { Fault, FaultPriority, FaultUpdatePayload } from '../types/fault'
 
 const props = defineProps<{ fault: Fault }>()
 
@@ -18,10 +19,11 @@ const submitting = update.isLoading
 // 编辑态开关：false=只读（只显示「编辑」按钮），true=展开表单
 const editing = ref(false)
 
-const form = reactive<{ location: string; symptom: string; handling_note: string }>({
+const form = reactive<{ location: string; symptom: string; handling_note: string; priority: FaultPriority }>({
   location: '',
   symptom: '',
   handling_note: '',
+  priority: 'normal',
 })
 const fieldErrors = reactive<Record<string, string>>({})
 
@@ -37,6 +39,7 @@ function startEdit() {
   form.location = props.fault.location
   form.symptom = props.fault.symptom
   form.handling_note = props.fault.handling_note ?? ''
+  form.priority = props.fault.priority
   clearErrors()
   editing.value = true
 }
@@ -74,6 +77,8 @@ function onSubmit() {
   if (loc !== props.fault.location) payload.location = loc
   const sym = form.symptom.trim()
   if (sym !== props.fault.symptom) payload.symptom = sym
+  // 优先级（第二阶段）：仅在改动时发；后端保证改它不碰 status（需求二.1），done 后也可改。
+  if (form.priority !== props.fault.priority) payload.priority = form.priority
   // handling_note：done 锁定不发；非 done 时仅在「非空且有改动」时发（后端不支持清空/显式 null）。
   if (!noteLocked.value) {
     const note = form.handling_note.trim()
@@ -128,6 +133,13 @@ function onSubmit() {
           show-word-limit
           class="control-wide"
         />
+      </el-form-item>
+
+      <el-form-item label="优先级">
+        <!-- 修改优先级不改变处理状态（需求二.1）；done 后仍可改（不受说明锁定限制） -->
+        <el-select v-model="form.priority" class="control">
+          <el-option v-for="opt in FAULT_PRIORITY_OPTIONS" :key="opt.value" :label="opt.label" :value="opt.value" />
+        </el-select>
       </el-form-item>
 
       <el-form-item

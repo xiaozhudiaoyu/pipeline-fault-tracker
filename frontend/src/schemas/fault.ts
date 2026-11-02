@@ -25,6 +25,10 @@ export const faultCreateSchema = z.object({
     .trim()
     .min(5, '故障现象至少 5 个字')
     .max(1000, '故障现象最多 1000 个字'),
+  // 优先级（第二阶段）：表单单选一档，未选时序列为 normal（与后端 FaultCreate 缺省一致）。
+  // 注：本机 zod 3.22 的 z.enum 不支持 error 参数（v4 写法），非法取值用默认英文消息，
+  // 实际触发不了——选项来自 FAULT_PRIORITY_OPTIONS 单选框。
+  priority: z.enum(['normal', 'urgent']).default('normal'),
 })
 export type FaultCreateInput = z.infer<typeof faultCreateSchema>
 
@@ -78,6 +82,8 @@ export const faultUpdateSchema = z
       .min(5, '故障现象至少 5 个字')
       .max(1000, '故障现象最多 1000 个字'),
     handling_note: z.string().trim().max(2000, '处理说明最多 2000 字'),
+    // 优先级可选（第二阶段）：不传/空串即不改；改它不会改状态（后端只应用传了的键）。
+    priority: z.enum(['normal', 'urgent', '']).optional(),
   })
   .superRefine((val, ctx) => {
     // 与后端 field_validator 一致：非空说明 strip 后至少 5 字（空串放行，语义是「本次不改」）

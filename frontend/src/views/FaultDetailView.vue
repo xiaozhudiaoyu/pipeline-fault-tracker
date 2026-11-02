@@ -5,6 +5,7 @@ import { computed } from 'vue'
 import { useRouter } from 'vue-router'
 
 import StatusTag from '../components/StatusTag.vue'
+import PriorityTag from '../components/PriorityTag.vue'
 import StatusTransitionPanel from '../components/StatusTransitionPanel.vue'
 import FaultEditPanel from '../components/FaultEditPanel.vue'
 import { useFaultDetail } from '../composables/useFaultDetail'
@@ -51,6 +52,10 @@ const errorMessage = computed(() => {
         <el-descriptions-item label="故障现象">{{ fault.symptom }}</el-descriptions-item>
         <el-descriptions-item label="当前状态">
           <StatusTag :status="fault.status" />
+        </el-descriptions-item>
+        <!-- 优先级（第二阶段，需求二.1 详情可查看）；顺序与列表/导出口径一致：状态在前、优先级在后 -->
+        <el-descriptions-item label="优先级">
+          <PriorityTag :priority="fault.priority" />
         </el-descriptions-item>
         <el-descriptions-item label="处理说明">{{ fault.handling_note || '—' }}</el-descriptions-item>
         <el-descriptions-item label="创建时间">{{ formatDateTime(fault.created_at) }}</el-descriptions-item>

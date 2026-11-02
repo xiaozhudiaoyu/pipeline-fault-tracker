@@ -34,8 +34,9 @@ export function updateFault(id: number, payload: FaultUpdatePayload): Promise<Fa
   return request<Fault>(`/api/faults/${id}`, { method: 'PATCH', body: payload })
 }
 
-// GET /api/faults/export —— 导出 CSV（复用列表筛选口径，不分页；筛选参数与列表同形，故用 Pick 复用类型）。
-export type FaultExportParams = Pick<FaultListParams, 'pipeline_id' | 'status'>
+// GET /api/faults/export —— 导出 CSV（复用列表筛选口径，不分页；筛选参数与列表同形，故用 Pick 复用类型；
+// 第二阶段起导出口径含 priority，与列表筛选保持同步）。
+export type FaultExportParams = Pick<FaultListParams, 'pipeline_id' | 'status' | 'priority'>
 
 // 导出触发方式（需求文档 D3 决策）：拼 URL + 隐藏 <a> click，浏览器原生处理下载与文件名
 //（文件名由后端 Content-Disposition 下发）。不走 request()：它按 JSON 解析响应，

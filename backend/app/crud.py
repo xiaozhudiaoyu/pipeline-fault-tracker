@@ -102,6 +102,38 @@ def list_faults(
     return items, total
 
 
+# 导出安全上限（防御性约束）：当前数据量远达不到，但避免未来数据增长后一次导出拖垮内存/浏览器
+EXPORT_MAX_ROWS = 10000
+
+
+def list_faults_for_export(
+    db: Session,
+    *,
+    pipeline_id: int | None = None,
+    status: FaultStatus | None = None,
+    limit: int = EXPORT_MAX_ROWS,
+) -> list[PipelineFault]:
+    """导出用查询：筛选口径与 list_faults 完全一致，但【不分页】、有安全上限。
+
+    与 list_faults 的差异（对应需求文档 D2 决策）：
+      · 不返回 total、不接受 page/size —— 分页是 UI 概念，导出语义是"筛选出的全部行"；
+      · limit 封顶 EXPORT_MAX_ROWS 行，超出截断（防御性，不报错）；
+      · 排序同样是 occurred_at 倒序，与列表页所见顺序一致。
+
+    筛选条件构造与 list_faults 保持同形（None = 不限制），保证两接口口径一致；
+    selectinload(pipeline) 同理：导出列含 pipeline.code/name，避免 N+1。
+    """
+    stmt = select(PipelineFault).options(selectinload(PipelineFault.pipeline))
+
+    if pipeline_id is not None:
+        stmt = stmt.where(PipelineFault.pipeline_id == pipeline_id)
+    if status is not None:
+        stmt = stmt.where(PipelineFault.status == status)
+
+    stmt = stmt.order_by(PipelineFault.occurred_at.desc()).limit(limit)
+    return list(db.scalars(stmt))
+
+
 def get_fault(db: Session, fault_id: int) -> PipelineFault:
     """按 ID 取故障详情（含预加载 pipeline），不存在则抛 FaultNotFoundError（404）。
 

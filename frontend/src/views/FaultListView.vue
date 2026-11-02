@@ -7,6 +7,7 @@ import { useRouter } from 'vue-router'
 
 import FaultFilterBar from '../components/FaultFilterBar.vue'
 import FaultTable from '../components/FaultTable.vue'
+import { exportFaultsCsv } from '../api/faults'
 import { useFaultList } from '../composables/useFaultList'
 import type { FaultListParams, FaultStatus } from '../types/fault'
 
@@ -58,13 +59,23 @@ const errorMessage = computed(() => {
 function goDetail(id: number) {
   router.push({ name: 'fault-detail', params: { id: String(id) } })
 }
+
+// 导出 CSV：携当前筛选条件（不含分页 —— 导出语义是"筛选出的全部行"，需求文档 D2）。
+// 取 params.value 而非 filters：params 已把 clearable 清空后的 '' 收敛成 undefined，口径与列表查询一致。
+function onExport() {
+  const { pipeline_id, status } = params.value
+  exportFaultsCsv({ pipeline_id, status })
+}
 </script>
 
 <template>
   <section class="fault-list">
     <header class="list-header">
       <h2 class="list-title">故障列表</h2>
-      <el-button type="primary" @click="router.push({ name: 'fault-create' })">登记故障</el-button>
+      <div class="header-actions">
+        <el-button @click="onExport">导出 CSV</el-button>
+        <el-button type="primary" @click="router.push({ name: 'fault-create' })">登记故障</el-button>
+      </div>
     </header>
 
     <FaultFilterBar v-model:pipeline="filters.pipeline_id" v-model:status="filters.status" class="list-block" />
@@ -108,6 +119,11 @@ function goDetail(id: number) {
 .list-title {
   margin: 0;
   font-size: 20px;
+}
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 .list-block {
   margin-bottom: 16px;

@@ -1,4 +1,4 @@
-// 故障接口封装：对应后端 routers/faults.py 的五个端点。
+// 故障接口封装：对应后端 routers/faults.py 的六个端点。
 import { request } from './client'
 import type {
   Fault,
@@ -32,4 +32,31 @@ export function transitionFault(id: number, payload: FaultTransitionPayload): Pr
 // PATCH /api/faults/{id} —— 修改基础信息（404 不存在 / 409 done 后说明锁定 / 422 校验）。
 export function updateFault(id: number, payload: FaultUpdatePayload): Promise<Fault> {
   return request<Fault>(`/api/faults/${id}`, { method: 'PATCH', body: payload })
+}
+
+// GET /api/faults/export —— 导出 CSV（复用列表筛选口径，不分页；筛选参数与列表同形，故用 Pick 复用类型）。
+export type FaultExportParams = Pick<FaultListParams, 'pipeline_id' | 'status'>
+
+// 导出触发方式（需求文档 D3 决策）：拼 URL + 隐藏 <a> click，浏览器原生处理下载与文件名
+//（文件名由后端 Content-Disposition 下发）。不走 request()：它按 JSON 解析响应，
+// 而导出返回的是 CSV 文件流；参数合法性由筛选组件（下拉/数字）保证，422 实际触发不了。
+export function exportFaultsCsv(params: FaultExportParams = {}): void {
+  const base = import.meta.env.VITE_API_BASE_URL
+  const sp = new URLSearchParams()
+  // 跳过空值：参数类型不含 ''（列表页 params 已把 clearable 清空后的 '' 收敛成 undefined），
+  // 故只需判 undefined/null（client.buildUrl 额外判 '' 是因为它的 QueryValue 类型含 string）
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== undefined && value !== null) {
+      sp.append(key, String(value))
+    }
+  }
+  const qs = sp.toString()
+  const url = `${base}/api/faults/export${qs ? `?${qs}` : ''}`
+
+  const a = document.createElement('a')
+  a.href = url
+  a.style.display = 'none'
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a) // 用完即移除，不在 DOM 留垃圾节点
 }

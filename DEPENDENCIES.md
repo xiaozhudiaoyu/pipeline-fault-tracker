@@ -15,6 +15,7 @@
 | 2026-09-22 | backend：迁移 uv 工作流（requirements.txt/lock.txt → pyproject.toml + uv.lock，`uv sync` 复现） | 24 → 24（锁定格式变更，版本零漂移） | uv.lock 与旧锁逐项对比 + `uv sync` 全命中 + `uv pip check` + `/api/faults` 200（见「八」） |
 | 2026-09-29 | backend：`uv add --dev pytest httpx`（阶段二 P1 测试体系，dev 依赖组，不进运行时） | 24 → 33（+2 直接 +7 传递） | `pyproject.toml [dependency-groups] dev` + `uv.lock` + `uv run pytest` 72 通过（见「九」） |
 | 2026-09-30 | backend：`uv add "psycopg[binary]"`（阶段二 P3 PostgreSQL 驱动，运行时依赖） | 33 → 36（+1 直接 +2 传递） | `pyproject.toml dependencies` + `uv.lock`（+91 行）+ 安装日志（见「十」） |
+| 2026-11-03 | backend：`uv add bcrypt pyjwt`（阶段三 M3 认证，运行时依赖） | 36 → 38（+2 直接，0 传递） | `pyproject.toml dependencies` + `uv.lock` + `uv run python -c "import bcrypt, jwt"` + 13 个 M3 集成测试全绿（见「十一」） |
 | 2026-09-18 | frontend：`npm install`（Vue 3.4 / Vite 4.5 / Element Plus 2.5 / TanStack Query v4 / Zod 3 链） | 0 → 75 | `package-lock.json` + `npm ls --depth=0`（见「四」） |
 
 ## 二、版本锁定决策（2026-09-18）
@@ -152,3 +153,13 @@
 - **声明与锁同步**：`pyproject.toml` `dependencies` 新增 `"psycopg[binary]>=3.3.6"`（ORM/数据库 分组，含用途注释）；`uv.lock` 同步更新（git diff +91 行）；与「九」dev 组不同，本包属**运行时依赖**，会进入 Docker 镜像（`uv sync --frozen --no-dev`）
 - **运行验证**：安装后 `uv run pytest` 全绿（见提交前验证报告）；PG 容器内全闭环验证见 P3 交付说明
 - **依赖边界**：未动任何既有包版本（git diff 仅 pyproject.toml +1 行、uv.lock +91 行，无删改）；SQLite 开发库路线不变，本地默认仍走 `config.py` 的 SQLite URL，PG 仅由 compose 环境变量注入
+
+## 十一、backend 认证依赖 bcrypt + pyjwt（2026-11-03 · 阶段三 M3）
+
+- **背景**：阶段三计划 M3「登录 + JWT + token_version 即时失效」。用户确认 D3（JWT 自签）+ D4（bcrypt 直用，不用 passlib 封装）后，本会话开头用户自行 `uv add bcrypt pyjwt`（规则 2.5 安装前确认、安装后补台账）
+- **实测版本**（`uv run python -c "import bcrypt, jwt; print(bcrypt.__version__, jwt.__version__)"`）：bcrypt **5.0.0** / pyjwt **2.15.1**（与 `pyproject.toml` 下限 `bcrypt>=5.0.0`、`pyjwt>=2.15.1` 一致）
+- **传递依赖**：0 个 — bcrypt 为 C 实现预编译 wheel，pyjwt 纯 Python；包数 36 → 38（+2 直接）
+- **声明与锁同步**：`backend/pyproject.toml` `dependencies` 新增两行（含用途注释）；`backend/uv.lock` 同步更新（uv 自动写入）；属**运行时依赖**进入 Docker 镜像链路
+- **配套变更**：`app/config.py` 新增 `secret_key` / `jwt_algorithm` / `access_token_expire_minutes` 三项（默认 dev 专用密钥，生产必覆盖）；`.env.example` 同步新增 `SECRET_KEY` / `ACCESS_TOKEN_EXPIRE_MINUTES` 注释块
+- **运行验证**：新增 `tests/test_api_auth.py` 13 个集成测试均绿（login 成功/错误密码/停用账号/me 取当前用户/无效 token/登出后旧 token 立即失效/bcrypt 同明文两次哈希不同/重复用户名 409）；全量 `uv run pytest` **122 passed, 21 xfailed, 0 errors**（xfail 为 M0 红基线，待 M4/M5 转绿）
+- **依赖边界**：未动任何既有包版本；本次仅新增两个运行时包与相关配套代码，无删改

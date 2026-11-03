@@ -35,6 +35,13 @@ class Settings(BaseSettings):
     # .env 里写逗号分隔字符串，Pydantic 自动按 JSON 或逗号解析为 list
     cors_origins: list[str] = ["http://localhost:5173", "http://127.0.0.1:5173"]
 
+    # ---- 认证（第三阶段）----
+    # secret_key 生产环境必须通过 .env 或环境变量覆盖，默认值仅供本地开发；
+    # 一旦泄露等同于所有 token 失效保护失效，故不入库、不入日志。
+    secret_key: str = "dev-only-insecure-secret-change-me"
+    jwt_algorithm: str = "HS256"
+    access_token_expire_minutes: int = 720  # 12 小时
+
 
 @lru_cache
 def get_settings() -> Settings:

@@ -15,7 +15,7 @@ from datetime import datetime, timedelta, timezone
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from .models import FaultPriority, FaultStatus
+from .models import FaultPriority, FaultRole, FaultStatus
 
 
 # ── 流水线（主数据）──────────────────────────────────────────────────────
@@ -208,3 +208,45 @@ class ErrorOut(BaseModel):
     code: str = Field(description="稳定的错误码，给程序判断用，别拿它当文案")
     message: str = Field(description="给人看的说明，可能随时改，不要用它做逻辑判断")
     details: list[FieldErrorOut] = Field(default_factory=list, description="字段级明细；没有则为空列表")
+
+
+# ── 用户与认证（第三阶段）───────────────────────────────────────────
+class LoginRequest(BaseModel):
+    """POST /api/auth/login 请求体。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    username: str = Field(min_length=1, max_length=50, description="登录用户名")
+    password: str = Field(min_length=1, max_length=200, description="明文密码，服务端 bcrypt 比对")
+
+
+class TokenResponse(BaseModel):
+    """登录成功后的 JWT 响应。"""
+
+    access_token: str = Field(description="JWT，前端存内存/localStorage，后续接口放 Authorization: Bearer")
+    token_type: str = Field(default="bearer", description="OAuth 2 规定的类型，固定 bearer")
+    expires_in: int = Field(description="有效期（秒），前端可据此提前刷新")
+
+
+class UserOut(BaseModel):
+    """用户响应体（不返回 password_hash、token_version）。"""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    username: str
+    display_name: str
+    role: FaultRole
+    is_active: bool
+    created_at: datetime
+
+
+class UserCreate(BaseModel):
+    """管理员创建用户请求体（seed 脚本与 M4 用户管理接口共用）。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    username: str = Field(min_length=3, max_length=50, description="登录名，全表唯一")
+    password: str = Field(min_length=6, max_length=200, description="初始明文密码，存 bcrypt 哈希")
+    display_name: str = Field(min_length=1, max_length=100, description="展示名称")
+    role: FaultRole = Field(description="固定三角色之一")

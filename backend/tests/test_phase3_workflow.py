@@ -140,6 +140,7 @@ class TestModelsPhase3:
 # 第二部分：认证模块测试（M3 实现后转绿）
 # ═══════════════════════════════════════════════════════════════════════════
 
+@pytest.mark.anyio
 class TestAuth:
     """POST /api/auth/login、GET /api/auth/me、token_version 失效机制。"""
 
@@ -148,12 +149,11 @@ class TestAuth:
         pytest.importorskip("app.auth", reason="M3: auth 模块尚未实现")
 
     @pytest.mark.xfail(reason="M3: auth 模块尚未实现")
-    def test_au1_unauthenticated_returns_401(self, client):
+    async def test_au1_unauthenticated_returns_401(self, client):
         """未登录访问业务接口 → 401。"""
-        import httpx
-        # client fixture 已存在（conftest），但 auth 未接入前 /api/faults 不检查登录
-        # 实现后：GET /api/faults 不带 Authorization 头 → 401
-        resp = httpx.get("http://testserver/api/faults")  # 占位，实际用 client fixture
+        # client 为 async fixture，当前 /api/faults 尚未接入登录校验（属 M4/M5），
+        # 因此本用例仍为红。待 M4 将 GET /api/faults 挂上 require_login 后转绿。
+        resp = await client.get("/api/faults")
         assert resp.status_code == 401
 
     @pytest.mark.xfail(reason="M3: login 端点尚未实现")
@@ -223,7 +223,11 @@ class TestWorkflowCrud:
             pipeline_id=self.p.id, location="1号工位",
             occurred_at=datetime.now() - timedelta(minutes=30),
             symptom="传送带异响并卡死需要紧急处理",
-        ), created_by_id=self.creator.id)
+        ))
+        # M5 后 create_fault 将接受 created_by_id 形参，目前直接补刷外键列
+        self.fault.created_by_id = self.creator.id
+        db_session.commit()
+        db_session.refresh(self.fault)
 
     @pytest.mark.xfail(reason="M5: assign_fault 函数尚未实现")
     def test_sm1_assign(self):

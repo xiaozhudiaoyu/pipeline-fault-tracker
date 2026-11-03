@@ -25,8 +25,10 @@ from .exceptions import (
     InvalidTransitionError,
     PipelineCodeDuplicateError,
     PipelineNotFoundError,
+    UserNotFoundError,
+    UsernameDuplicateError,
 )
-from .models import FaultPriority, FaultStatus, Pipeline, PipelineFault
+from .models import FaultPriority, FaultStatus, Pipeline, PipelineFault, User
 
 
 # ── 流水线（主数据）──────────────────────────────────────────────────────
@@ -267,3 +269,86 @@ def transition_fault(
     db.commit()
     # commit 触发了 updated_at 的 onupdate=func.now()；重新查询拿到含 pipeline 的完整对象
     return get_fault(db, fault_id)
+
+
+# ── 用户（第三阶段）───────────────────────────────────────────────────
+# 注：本层不包含 login 验证——verify_password 属于 auth.py（密码安全属于“认证”不属于“数据访问”）。
+# authenticate() 只是个很薄的“查库 + 转交 auth.verify_password”组合，便于路由与 seed 统一调用。
+from .auth import hash_password, verify_password  # noqa: E402  避免模块顶层循环依赖
+
+
+def get_user(db: Session, user_id: int) -> User:
+    """按 ID 取用户，不存在抛 UserNotFoundError（404）。"""
+    user = db.get(User, user_id)
+    if user is None:
+        raise UserNotFoundError(user_id)
+    return user
+
+
+def get_user_by_username(db: Session, username: str) -> User | None:
+    """登录/建用户时按唯一用户名查询。找不到返回 None（不抛，由调用方决定 401/409）。"""
+    stmt = select(User).where(User.username == username)
+    return db.scalars(stmt).first()
+
+
+def list_users(db: Session) -> list[User]:
+    """返回全部用户，按 username 升序（管理员管理页使用，M4 接入）。"""
+    stmt = select(User).order_by(User.username)
+    return list(db.scalars(stmt))
+
+
+def create_user(db: Session, data: schemas.UserCreate) -> User:
+    """创建用户。username 全表唯一，重复抛 UsernameDuplicateError（409）。
+
+    不开放自助注册（需求二），本函数仅供：
+      · M4 管理员接口 POST /api/users 调用；
+      · M8 seed.py 初始化测试账号时调用。
+    """
+    if get_user_by_username(db, data.username) is not None:
+        raise UsernameDuplicateError(data.username)
+    user = User(
+        username=data.username,
+        password_hash=hash_password(data.password),
+        display_name=data.display_name,
+        role=data.role,
+        is_active=True,
+        token_version=0,
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    return user
+
+
+def authenticate(db: Session, username: str, password: str) -> User | None:
+    """登录验证：用户名存在 且 密码匹配 → 返回 User；否则 None。
+
+    不检查 is_active——留给路由层区分“密码错”与“已停用”，
+    避免向攻击者泄露“此用户名存在但已停用”这类信息。
+    """
+    user = get_user_by_username(db, username)
+    if user is None:
+        return None
+    if not verify_password(password, user.password_hash):
+        return None
+    return user
+
+
+def bump_token_version(db: Session, user: User) -> User:
+    """使当前用户的所有旧 token 立即失效。停用/改密/登出时调用（D3）。"""
+    user.token_version += 1
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    return user
+
+
+def set_user_active(db: Session, user: User, active: bool) -> User:
+    """启用/停用账号。停用时顺手 bump token_version（需求二：停用后不能继续操作）。"""
+    user.is_active = active
+    if not active:
+        user.token_version += 1
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    return user

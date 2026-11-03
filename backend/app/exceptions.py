@@ -149,6 +149,35 @@ class HandlingNoteLockedError(AppError):
         )
 
 
+# ── 用户相关异常（第三阶段）──────────────────────────────────
+class UsernameDuplicateError(AppError):
+    """409：用户名已存在（创建用户时 username 全表唯一）。"""
+
+    status_code = status.HTTP_409_CONFLICT
+    code = "username_duplicate"
+    default_message = "用户名已存在"
+
+    def __init__(self, username: str) -> None:
+        super().__init__(
+            f"用户名 '{username}' 已被占用",
+            details=[{"field": "body.username", "type": "duplicate", "message": f"'{username}' 已存在"}],
+        )
+
+
+class UserNotFoundError(AppError):
+    """404：用户不存在（管理员对用户 ID 操作时，库内无对应记录）。"""
+
+    status_code = status.HTTP_404_NOT_FOUND
+    code = "user_not_found"
+    default_message = "用户不存在"
+
+    def __init__(self, user_id: int) -> None:
+        super().__init__(
+            f"没有找到编号为 {user_id} 的用户",
+            details=[{"field": "path.user_id", "type": "not_found", "message": f"{user_id} 不在数据中"}],
+        )
+
+
 # HTTPException 状态码 → 机器可读码。没列出的自动退化成 http_418 形式。
 _HTTP_CODE_MAP: dict[int, str] = {
     status.HTTP_400_BAD_REQUEST: "bad_request",

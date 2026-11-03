@@ -64,3 +64,6 @@ guide_file/
 
 # ---- Windows 批处理脚本 ----
 *.bat
+
+# ---- 文档 ----
+docs/

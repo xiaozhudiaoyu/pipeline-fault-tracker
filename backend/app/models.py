@@ -31,17 +31,18 @@ class FaultStatus(str, enum.Enum):
       · Pydantic 2 能直接用它做类型标注与校验；
       · SQLAlchemy 的 Enum 列类型会把它映射为 VARCHAR + CHECK 约束（SQLite 上）。
 
-    状态流转规则（后端硬校验，见 crud.py）：
-      pending → processing：允许
-      pending → done：允许（handling_note 必填）
-      processing → done：允许（handling_note 必填）
-      processing → pending：允许（回退）
-      done → *：禁止（需求："已完成的记录不能直接恢复为待处理"）
+    状态流转规则（第三阶段，后端硬校验，见 crud.py）：
+      pending → processing：负责人点“开始处理”
+      processing → awaiting_confirmation：负责人点“提交处理结果”
+      awaiting_confirmation → done：创建人确认完成
+      awaiting_confirmation → processing：创建人退回处理
+      done → *：禁止（终态不可逆）
     """
 
-    pending = "pending"        # 待处理
-    processing = "processing"  # 处理中
-    done = "done"              # 已完成
+    pending = "pending"                        # 待处理
+    processing = "processing"                  # 处理中
+    awaiting_confirmation = "awaiting_confirmation"  # 待确认（第三阶段新增）
+    done = "done"                              # 已完成
 
 
 class FaultPriority(str, enum.Enum):
@@ -58,6 +59,99 @@ class FaultPriority(str, enum.Enum):
 
     normal = "normal"  # 普通
     urgent = "urgent"  # 紧急
+
+
+class FaultRole(str, enum.Enum):
+    """用户角色（第三阶段需求二）。
+
+    固定三角色，不增加自助注册、组织架构或自定义权限配置。
+    同 (str, enum.Enum) 模式：JSON 序列化为字符串，SQLAlchemy Enum 列映射 VARCHAR。
+    """
+
+    user = "user"        # 普通用户（报修人）
+    handler = "handler"  # 处理人员
+    admin = "admin"      # 管理员
+
+
+class TimelineAction(str, enum.Enum):
+    """时间线动作类型（第三阶段需求四.1）。
+
+    每种动作对应一个业务事件，append-only 不可修改旧记录。
+    """
+
+    create = "create"                  # 登记
+    assign = "assign"                  # 指派
+    reassign = "reassign"              # 改派
+    start = "start"                    # 开始处理
+    progress = "progress"              # 追加进展
+    submit = "submit"                  # 提交处理结果
+    confirm = "confirm"                # 确认完成
+    return_ = "return"                 # 退回处理
+    priority_change = "priority_change"  # 优先级调整
+
+
+class User(Base):
+    """用户表（第三阶段需求二）。
+
+    账号由管理员创建，每个账号一种固定角色。
+    password_hash 存储 bcrypt 哈希，不保存明文。
+    token_version 用于即时失效：停用/改密/登出时 bump，旧 token 版本号不匹配即失效。
+    """
+
+    __tablename__ = "users"
+
+    id: Mapped[int] = mapped_column(
+        primary_key=True,
+        autoincrement=True,
+        comment="用户主键",
+    )
+
+    username: Mapped[str] = mapped_column(
+        String(50),
+        unique=True,
+        nullable=False,
+        comment="登录用户名，全表唯一",
+    )
+
+    password_hash: Mapped[str] = mapped_column(
+        String(200),
+        nullable=False,
+        comment="bcrypt 哈希值，不保存明文",
+    )
+
+    display_name: Mapped[str] = mapped_column(
+        String(100),
+        nullable=False,
+        comment="显示名称（业务用，如“张处理”）",
+    )
+
+    role: Mapped[FaultRole] = mapped_column(
+        Enum(FaultRole),
+        nullable=False,
+        comment="角色：user/handler/admin",
+    )
+
+    is_active: Mapped[bool] = mapped_column(
+        nullable=False,
+        default=True,
+        comment="账号启用状态，停用后即使已登录也不能继续操作",
+    )
+
+    token_version: Mapped[int] = mapped_column(
+        nullable=False,
+        default=0,
+        comment="token 版本号，停用/改密/登出时 bump，旧 token 失效",
+    )
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        server_default=func.now(),
+        nullable=False,
+        comment="账号创建时间",
+    )
+
+    def __repr__(self) -> str:
+        return f"User(id={self.id!r}, username={self.username!r}, role={self.role!r})"
 
 
 class Pipeline(Base):
@@ -216,14 +310,146 @@ class PipelineFault(Base):
         comment="完成时间，状态变为 done 时写入",
     )
 
-    # ---- relationship：一对多的"多"端导航 ----
+    # ---- 创建人与负责人外键（第三阶段新增）----
+    # 可空：旧库升级时无法确定创建人/负责人的故障显示为“历史数据”（需求六.2）。
+    # ondelete=SET NULL：用户被删除时不级联删故障，只清空关联（故障不可删除，需求二.5）。
+    created_by_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+        comment="创建人用户 ID，可空（旧数据无对应账号）",
+    )
+
+    assignee_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+        comment="当前负责人用户 ID，可空（未指派）",
+    )
+
+    # ---- relationship：一对多的“多”端导航 ----
     # fault.pipeline 让你从故障对象直接跳到所属流水线，底层生成 SELECT ... WHERE id = ?。
     pipeline: Mapped["Pipeline"] = relationship(
         back_populates="faults",
+    )
+
+    created_by: Mapped["User | None"] = relationship(
+        "User",
+        foreign_keys=[created_by_id],
+    )
+
+    assignee: Mapped["User | None"] = relationship(
+        "User",
+        foreign_keys=[assignee_id],
+    )
+
+    # 时间线关系（一对多：一条故障多条时间线记录）
+    timelines: Mapped[list["FaultTimeline"]] = relationship(
+        back_populates="fault",
+        cascade="all, delete-orphan",
+        order_by="FaultTimeline.created_at",
     )
 
     def __repr__(self) -> str:
         return (
             f"PipelineFault(id={self.id!r}, pipeline_id={self.pipeline_id!r}, "
             f"status={self.status!r}, occurred_at={self.occurred_at!r})"
+        )
+
+
+class FaultTimeline(Base):
+    """故障处理时间线（第三阶段需求四）。
+
+    append-only：新记录不能覆盖或修改旧记录（需求四.2）。
+    每条记录展示“谁在什么时间做了什么”，并附相关说明。
+    is_imported 标记“升级时导入”的旧数据（需求六.3，不编造操作人和时间）。
+    """
+
+    __tablename__ = "fault_timelines"
+
+    id: Mapped[int] = mapped_column(
+        primary_key=True,
+        autoincrement=True,
+        comment="时间线记录主键",
+    )
+
+    fault_id: Mapped[int] = mapped_column(
+        ForeignKey("pipeline_faults.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+        comment="关联故障 ID",
+    )
+
+    action: Mapped[TimelineAction] = mapped_column(
+        Enum(TimelineAction),
+        nullable=False,
+        comment="动作类型：create/assign/reassign/start/progress/submit/confirm/return/priority_change",
+    )
+
+    # 操作人：FK 可空（SET NULL，用户被删除后保留快照名称）+ 冗余快照字段。
+    operator_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+        comment="操作人用户 ID，可空（历史数据）",
+    )
+
+    operator_name_snapshot: Mapped[str | None] = mapped_column(
+        String(100),
+        nullable=True,
+        comment="操作人名称快照（用户被删后仍可显示）",
+    )
+
+    # 状态变更前后值（需求四.2：“展示修改前后的值”）
+    from_status: Mapped[str | None] = mapped_column(
+        String(30),
+        nullable=True,
+        comment="变更前状态（如 pending）",
+    )
+
+    to_status: Mapped[str | None] = mapped_column(
+        String(30),
+        nullable=True,
+        comment="变更后状态（如 processing）",
+    )
+
+    # 负责人变更前后值
+    from_assignee_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+        comment="变更前负责人 ID（改派时用）",
+    )
+
+    to_assignee_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+        comment="变更后负责人 ID",
+    )
+
+    note: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True,
+        comment="说明/原因/进展内容",
+    )
+
+    is_imported: Mapped[bool] = mapped_column(
+        nullable=False,
+        default=False,
+        comment="是否为升级时导入的旧数据（需求六.3）",
+    )
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        server_default=func.now(),
+        nullable=False,
+        comment="记录创建时间（操作发生时间）",
+    )
+
+    # ---- relationship ----
+    fault: Mapped["PipelineFault"] = relationship(
+        back_populates="timelines",
+        foreign_keys=[fault_id],
+    )
+
+    def __repr__(self) -> str:
+        return (
+            f"FaultTimeline(id={self.id!r}, fault_id={self.fault_id!r}, "
+            f"action={self.action!r}, operator_id={self.operator_id!r})"
         )

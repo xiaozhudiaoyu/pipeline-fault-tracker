@@ -13,7 +13,7 @@
 
 from collections.abc import Iterator
 
-from sqlalchemy import create_engine, inspect
+from sqlalchemy import create_engine, event, inspect, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -34,6 +34,19 @@ engine: Engine = create_engine(
     echo=settings.db_echo,
     connect_args=_connect_args,
 )
+
+# ---- SQLite 外键约束开启（第三阶段新增）----
+# SQLite 默认 PRAGMA foreign_keys=OFF，建表时声明的 ON DELETE CASCADE/SET NULL
+# 不会在数据库层强制执行（PG 默认强制）。本项目第三阶段引入 User 外键后，
+# 需要保证删除/停用用户时 SET NULL 等约束生效，故每个连接建立时开启。
+# 用 event.listens_for 而非 connect_args 里的 pragma 参数：后者只在 create_engine
+# 层设置一次，连接池回收复用后可能失效；event 保证每次新连接都执行。
+if _is_sqlite:
+    @event.listens_for(engine, "connect")
+    def _set_sqlite_pragma(dbapi_conn, connection_record):
+        cursor = dbapi_conn.cursor()
+        cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.close()
 
 # ---- Session 工厂 ----
 # expire_on_commit=False：commit 后对象属性不过期，接口里"先 commit 再序列化响应"不会触发额外 SELECT。

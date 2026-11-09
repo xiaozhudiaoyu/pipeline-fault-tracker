@@ -1,25 +1,27 @@
 # 第 3+4 层：/api/faults 集成测试 —— httpx ASGITransport 走完整请求链路，
 # 错误路径逐一断言状态码与 {code, message, details} 统一响应体结构。
 #
-# 验收标准清单（先写标准，再落测试）：
+# 第三阶段调整：
+#   · 旧 N6 / E5 / E6 / E7（基于 PATCH /{id}/transition 的状态流转）已删除：
+#     /transition 端点不存在，新状态机由 SM1–SM12 红测试（test_phase3_workflow.py）覆盖；
+#   · N3 不再依赖 transition，改为验证“pipeline_id 筛选 + 分页”与“列表预加载”；
+#   · client 默认以 admin 身份注入，所有创建故障的 created_by 即 admin。
+#
+# 验收标准清单：
 #
 # 【正常】
-#   N1 POST /api/faults 合法 → 201 + Location 头 + FaultOut 结构（status=pending、嵌套 pipeline）
+#   N1 POST /api/faults 合法 → 201 + Location 头 + FaultOut 结构
 #   N2 GET /api/faults → 200，items+total+page+size 四件套，occurred_at 倒序
-#   N3 GET /api/faults?pipeline_id=&status=&page=&size= 筛选分页生效
+#   N3 GET /api/faults?pipeline_id=&page=&size= 筛选分页生效（列表项含 created_by）
 #   N4 GET /api/faults/{id} → 200 完整详情
 #   N5 PATCH /api/faults/{id} 改 location → 200，未传字段不变
-#   N6 PATCH /api/faults/{id}/transition 合法流转 → 200，done 时 closed_at 写入
-# 【异常】（每条都断言状态码 + code + details 字段路径）
+# 【异常】
 #   E1 GET 不存在 id → 404 fault_not_found
-#   E2 POST pipeline_id 不存在 → 404 pipeline_not_found，details 指向 body.pipeline_id
-#   E3 POST symptom 过短 → 422 validation_error，details 指向 symptom
+#   E2 POST pipeline_id 不存在 → 404 pipeline_not_found
+#   E3 POST symptom 过短 → 422
 #   E4 POST 多传 status 字段 → 422（extra=forbid）
-#   E5 transition done→pending → 409 invalid_transition
-#   E6 transition done 不填 note → 400 handling_note_required
-#   E7 PATCH done 记录改 handling_note → 409 handling_note_locked
 #   E8 GET /api/faults/abc（路径参数非整数）→ 422
-#   E9 查询参数越界（page=0 / size=999 / status=xxx）→ 422
+#   E9 查询参数越界 → 422
 # 【边界】
 #   B1 空库列表 → items=[] total=0
 #   B2 POST 合法但 occurred_at 为未来（超容差）→ 422
@@ -89,16 +91,21 @@ class TestHappyPath:
     async def test_n3_list_filters_and_pagination(self, client):
         p1 = await _seed_pipeline(client, "LINE-A")
         p2 = await _seed_pipeline(client, "LINE-B")
-        await _seed_fault(client, p1)
+        f1 = await _seed_fault(client, p1)
         f2 = await _seed_fault(client, p2)
-        await client.patch(f"/api/faults/{f2['id']}/transition", json={"target_status": "processing"})
 
         resp = await client.get("/api/faults", params={"pipeline_id": p1})
         assert resp.json()["total"] == 1
-        resp = await client.get("/api/faults", params={"status": "processing"})
-        assert resp.json()["total"] == 1 and resp.json()["items"][0]["id"] == f2["id"]
+        assert resp.json()["items"][0]["id"] == f1["id"]
+        # 预加载验证：列表项包含 created_by（admin）与 assignee（未指派=null）
+        item = resp.json()["items"][0]
+        assert item["created_by"] is not None and item["created_by"]["role"] == "admin"
+        assert item["assignee"] is None
+
         resp = await client.get("/api/faults", params={"page": 1, "size": 1})
         assert len(resp.json()["items"]) == 1 and resp.json()["total"] == 2
+        # 验证 f2 存在（反序首项）
+        assert resp.json()["items"][0]["id"] == f2["id"]
 
     async def test_n4_get_detail(self, client):
         pid = await _seed_pipeline(client)
@@ -117,17 +124,13 @@ class TestHappyPath:
         assert data["location"] == "5号工位电机"
         assert data["symptom"] == "传送带异响并卡死"  # 未传字段不动
 
-    async def test_n6_transition_to_done(self, client):
+    async def test_n6_patch_priority_silently_ignored(self, client):
+        """第三阶段：PATCH 仅支持 location/symptom，传 priority 不报错但不生效（引导走 /priority 端点）。"""
         pid = await _seed_pipeline(client)
-        created = await _seed_fault(client, pid)
-        resp = await client.patch(
-            f"/api/faults/{created['id']}/transition",
-            json={"target_status": "done", "handling_note": "更换皮带并复测正常"},
-        )
+        created = await _seed_fault(client, pid, priority="urgent")
+        resp = await client.patch(f"/api/faults/{created['id']}", json={"priority": "normal"})
         assert resp.status_code == 200
-        data = resp.json()
-        assert data["status"] == "done"
-        assert data["closed_at"] is not None
+        assert resp.json()["priority"] == "urgent"  # 未被修改
 
 
 # ──【异常】───────────────────────────────────────────────────────────────
@@ -156,42 +159,6 @@ class TestErrorPath:
         resp = await client.post("/api/faults", json=_fault_body(pid, status="done"))
         assert resp.status_code == 422
         _assert_error_shape(resp.json(), "validation_error")
-
-    async def test_e5_done_not_reversible(self, client):
-        pid = await _seed_pipeline(client)
-        created = await _seed_fault(client, pid)
-        await client.patch(
-            f"/api/faults/{created['id']}/transition",
-            json={"target_status": "done", "handling_note": "更换皮带并复测正常"},
-        )
-        resp = await client.patch(
-            f"/api/faults/{created['id']}/transition", json={"target_status": "pending"}
-        )
-        assert resp.status_code == 409
-        _assert_error_shape(resp.json(), "invalid_transition")
-        assert resp.json()["details"][0]["field"] == "body.target_status"
-
-    async def test_e6_done_requires_note(self, client):
-        pid = await _seed_pipeline(client)
-        created = await _seed_fault(client, pid)
-        resp = await client.patch(
-            f"/api/faults/{created['id']}/transition", json={"target_status": "done"}
-        )
-        assert resp.status_code == 400
-        _assert_error_shape(resp.json(), "handling_note_required")
-
-    async def test_e7_note_locked_after_done(self, client):
-        pid = await _seed_pipeline(client)
-        created = await _seed_fault(client, pid)
-        await client.patch(
-            f"/api/faults/{created['id']}/transition",
-            json={"target_status": "done", "handling_note": "更换皮带并复测正常"},
-        )
-        resp = await client.patch(
-            f"/api/faults/{created['id']}", json={"handling_note": "事后篡改结案结论"}
-        )
-        assert resp.status_code == 409
-        _assert_error_shape(resp.json(), "handling_note_locked")
 
     async def test_e8_path_param_not_int(self, client):
         resp = await client.get("/api/faults/abc")

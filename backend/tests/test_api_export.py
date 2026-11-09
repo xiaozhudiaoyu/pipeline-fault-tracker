@@ -33,7 +33,7 @@ from app.models import FaultStatus
 # 所有 async 测试统一跑 anyio 插件的 asyncio 后端（见 conftest.anyio_backend）
 pytestmark = pytest.mark.anyio
 
-# 与 routers/faults.py 的表头保持同源断言基准（原 10 列 + 第二阶段 priority 列，顺序即导出顺序）
+# 与 routers/faults.py 的表头保持同源断言基准（原 10 列 + 第二阶段 priority 列 + 第三阶段 creator/assignee）
 EXPECTED_HEADER = [
     "id",
     "pipeline_code",
@@ -46,6 +46,8 @@ EXPECTED_HEADER = [
     "handling_note",
     "created_at",
     "closed_at",
+    "creator",
+    "assignee",
 ]
 
 
@@ -118,23 +120,27 @@ class TestExportHappyPath:
         assert rows[1][10] == ""  # closed_at（pending 未结案）
 
     async def test_n2_export_filters_match_list_scope(self, client):
-        """N2：pipeline_id / status 筛选只含匹配行，口径与列表接口一致。"""
+        """N2：pipeline_id / priority 筛选只含匹配行，口径与列表接口一致。
+
+        第三阶段旧版基于 /transition 推进状态后筛选 processing 的路径已不适用（新状态
+        机需 assign + start 两个动作 + 非 admin 身份）；本用例改用 priority=urgent 验证
+        “列表与导出口径一致”这一本质诉求。
+        """
         p1 = await _seed_pipeline(client, "LINE-A")
         p2 = await _seed_pipeline(client, "LINE-B")
         await _seed_fault(client, p1)
-        f2 = await _seed_fault(client, p2)
-        await client.patch(f"/api/faults/{f2['id']}/transition", json={"target_status": "processing"})
+        f2 = await _seed_fault(client, p2, priority="urgent")
 
         resp = await client.get("/api/faults/export", params={"pipeline_id": p1})
         rows = _parse_csv(resp)
         assert len(rows) == 2 and all(r[1] == "LINE-A" for r in rows[1:])
 
-        resp = await client.get("/api/faults/export", params={"status": "processing"})
+        resp = await client.get("/api/faults/export", params={"priority": "urgent"})
         rows = _parse_csv(resp)
-        assert len(rows) == 2 and rows[1][0] == str(f2["id"]) and rows[1][6] == "processing"
+        assert len(rows) == 2 and rows[1][0] == str(f2["id"]) and rows[1][7] == "urgent"
 
         # 口径交叉验证：列表接口 total 与导出行数一致
-        list_resp = await client.get("/api/faults", params={"status": "processing"})
+        list_resp = await client.get("/api/faults", params={"priority": "urgent"})
         assert list_resp.json()["total"] == 1
 
     async def test_n3_bom_and_content_disposition(self, client):
@@ -193,24 +199,27 @@ class TestExportBoundary:
         assert rows[1][0] == str(created["id"])
         assert rows[1][5] == tricky  # 解析回原文
 
-    async def test_b10_crud_limit_truncation(self, client, db_session):
+    async def test_b10_crud_limit_truncation(self, client, db_session, admin_user):
         """B10：crud 上限截断 → limit 生效且保留 occurred_at 最近的行。
 
         经 API 造数后直接用测试 session 调 crud（conftest 已把 get_db 覆盖到同一
         session，数据互通）；不真造一万行，用小 limit 验证截断逻辑本身。
+        第三阶段 list_faults_for_export 需 viewer 参数，传 admin 看到全量。
         """
         pid = await _seed_pipeline(client)
         for hours_ago in (5, 3, 1):  # 三条不同时间的记录
             await _seed_fault(client, pid, occurred_at=(datetime.now() - timedelta(hours=hours_ago)).isoformat())
 
-        rows = crud.list_faults_for_export(db_session, limit=2)
+        rows = crud.list_faults_for_export(db_session, viewer=admin_user, limit=2)
         assert len(rows) == 2
-        # 截断保留"最近的"：倒序 + limit，5 小时前的那条被截掉
+        # 截断保留“最近的”：倒序 + limit，5 小时前的那条被截掉
         occurred = [r.occurred_at for r in rows]
         assert occurred == sorted(occurred, reverse=True)
         assert all(isinstance(r.status, FaultStatus) for r in rows)
 
         # 筛选口径与不传 limit 的全量结果一致（同一 where 构造）
-        all_rows = crud.list_faults_for_export(db_session)
-        filtered = crud.list_faults_for_export(db_session, pipeline_id=pid, status=FaultStatus.pending)
+        all_rows = crud.list_faults_for_export(db_session, viewer=admin_user)
+        filtered = crud.list_faults_for_export(
+            db_session, viewer=admin_user, pipeline_id=pid, status=FaultStatus.pending
+        )
         assert len(all_rows) == 3 and len(filtered) == 3

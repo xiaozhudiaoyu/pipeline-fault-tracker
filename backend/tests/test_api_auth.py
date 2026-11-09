@@ -75,13 +75,13 @@ class TestAuthLogin:
 
 
 class TestAuthMe:
-    async def test_au_m3_4_me_returns_current_user(self, client, seeded_user):
-        login = await client.post(
+    async def test_au_m3_4_me_returns_current_user(self, raw_client, seeded_user):
+        login = await raw_client.post(
             "/api/auth/login",
             json={"username": seeded_user.username, "password": seeded_user.password},
         )
         token = login.json()["access_token"]
-        me = await client.get("/api/auth/me", headers={"Authorization": f"Bearer {token}"})
+        me = await raw_client.get("/api/auth/me", headers={"Authorization": f"Bearer {token}"})
         assert me.status_code == 200
         body = me.json()
         assert body["username"] == seeded_user.username
@@ -92,38 +92,38 @@ class TestAuthMe:
         assert "password_hash" not in body
         assert "token_version" not in body
 
-    async def test_au_m3_5_me_without_token_401(self, client):
-        resp = await client.get("/api/auth/me")
+    async def test_au_m3_5_me_without_token_401(self, raw_client):
+        resp = await raw_client.get("/api/auth/me")
         assert resp.status_code == 401
 
-    async def test_au_m3_5_me_with_bogus_token_401(self, client):
-        resp = await client.get("/api/auth/me", headers={"Authorization": "Bearer not.a.jwt"})
+    async def test_au_m3_5_me_with_bogus_token_401(self, raw_client):
+        resp = await raw_client.get("/api/auth/me", headers={"Authorization": "Bearer not.a.jwt"})
         assert resp.status_code == 401
 
 
 class TestAuthLogout:
-    async def test_au_m3_6_logout_invalidates_token(self, client, seeded_user):
-        login = await client.post(
+    async def test_au_m3_6_logout_invalidates_token(self, raw_client, seeded_user):
+        login = await raw_client.post(
             "/api/auth/login",
             json={"username": seeded_user.username, "password": seeded_user.password},
         )
         token = login.json()["access_token"]
         # 用一次证明有效
-        first = await client.get("/api/auth/me", headers={"Authorization": f"Bearer {token}"})
+        first = await raw_client.get("/api/auth/me", headers={"Authorization": f"Bearer {token}"})
         assert first.status_code == 200
         # 登出
-        logout = await client.post("/api/auth/logout", headers={"Authorization": f"Bearer {token}"})
+        logout = await raw_client.post("/api/auth/logout", headers={"Authorization": f"Bearer {token}"})
         assert logout.status_code == 204
         # 旧 token 立即失效（token_version bump）
-        second = await client.get("/api/auth/me", headers={"Authorization": f"Bearer {token}"})
+        second = await raw_client.get("/api/auth/me", headers={"Authorization": f"Bearer {token}"})
         assert second.status_code == 401
         # 重新登录后新 token 生效
-        relogin = await client.post(
+        relogin = await raw_client.post(
             "/api/auth/login",
             json={"username": seeded_user.username, "password": seeded_user.password},
         )
         new_token = relogin.json()["access_token"]
-        third = await client.get("/api/auth/me", headers={"Authorization": f"Bearer {new_token}"})
+        third = await raw_client.get("/api/auth/me", headers={"Authorization": f"Bearer {new_token}"})
         assert third.status_code == 200
 
 

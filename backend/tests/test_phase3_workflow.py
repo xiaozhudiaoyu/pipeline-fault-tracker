@@ -142,48 +142,68 @@ class TestModelsPhase3:
 
 @pytest.mark.anyio
 class TestAuth:
-    """POST /api/auth/login、GET /api/auth/me、token_version 失效机制。"""
+    """POST /api/auth/login、GET /api/auth/me、token_version 失效机制。
+
+    M3/M4 已实现本模块，本组测试走 raw_client（不预注入 admin 身份），
+    观察真实 JWT 校验链；建用户走 crud.create_user 以保持密码哈希路径一致。
+    """
 
     @pytest.fixture(autouse=True)
     def _require_auth(self):
         pytest.importorskip("app.auth", reason="M3: auth 模块尚未实现")
 
-    @pytest.mark.xfail(reason="M3: auth 模块尚未实现")
-    async def test_au1_unauthenticated_returns_401(self, client):
-        """未登录访问业务接口 → 401。"""
-        # client 为 async fixture，当前 /api/faults 尚未接入登录校验（属 M4/M5），
-        # 因此本用例仍为红。待 M4 将 GET /api/faults 挂上 require_login 后转绿。
-        resp = await client.get("/api/faults")
+    async def test_au1_unauthenticated_returns_401(self, raw_client):
+        """未登录访问业务接口 → 401。M4 已给 GET /api/faults 挂 require_login。"""
+        resp = await raw_client.get("/api/faults")
         assert resp.status_code == 401
 
-    @pytest.mark.xfail(reason="M3: login 端点尚未实现")
-    async def test_login_success_and_me(self, client):
+    async def test_login_success_and_me(self, raw_client, db_session):
         """正确用户名密码 → 200 token；带 token 访问 me → 200 含 username/role。"""
-        # 先建用户（需 M1 User 模型 + M3 hash_password）
-        from app.auth import hash_password
-        from app.models import User, FaultRole
-        # 此处假设 db_session 可用（conftest 提供）
-        # 集成测试中通过 API 造数据更真实，但 User 创建目前无公开端点
-        # 暂用直接入库方式
-        resp = await client.post("/api/auth/login", json={"username": "testuser", "password": "pass123"})
-        assert resp.status_code == 200
-        token = resp.json()["access_token"]
-        me_resp = await client.get("/api/auth/me", headers={"Authorization": f"Bearer {token}"})
-        assert me_resp.status_code == 200
-        assert me_resp.json()["username"] == "testuser"
+        from app import crud, schemas
+        from app.models import FaultRole
 
-    @pytest.mark.xfail(reason="M3: token_version bump 尚未实现")
-    async def test_au2_deactivated_token_invalidated(self, client):
-        """管理员停用账号后，该用户原 token 立即失效 → 401。"""
-        # 1. 登录拿 token
-        # 2. 管理员 bump token_version
-        # 3. 用原 token 访问 → 401
-        resp = await client.post("/api/auth/login", json={"username": "u1", "password": "p1"})
+        crud.create_user(
+            db_session,
+            schemas.UserCreate(
+                username="testuser", password="pass123",
+                display_name="测试用户", role=FaultRole.user,
+            ),
+        )
+        resp = await raw_client.post(
+            "/api/auth/login", json={"username": "testuser", "password": "pass123"}
+        )
         assert resp.status_code == 200
         token = resp.json()["access_token"]
-        # 模拟停用（直接改 DB 或调管理员端点）
-        # ...
-        me_resp = await client.get("/api/auth/me", headers={"Authorization": f"Bearer {token}"})
+        me_resp = await raw_client.get(
+            "/api/auth/me", headers={"Authorization": f"Bearer {token}"}
+        )
+        assert me_resp.status_code == 200
+        body = me_resp.json()
+        assert body["username"] == "testuser"
+        assert body["role"] == "user"
+
+    async def test_au2_deactivated_token_invalidated(self, raw_client, db_session):
+        """管理员停用账号后，该用户原 token 立即失效 → 401（set_user_active 顺手 bump tv）。"""
+        from app import crud, schemas
+        from app.models import FaultRole
+
+        u = crud.create_user(
+            db_session,
+            schemas.UserCreate(
+                username="deactuser", password="password123",
+                display_name="待停用", role=FaultRole.user,
+            ),
+        )
+        login = await raw_client.post(
+            "/api/auth/login", json={"username": "deactuser", "password": "password123"}
+        )
+        assert login.status_code == 200
+        token = login.json()["access_token"]
+        # 走真实停用路径：is_active=False + token_version 同步 bump
+        crud.set_user_active(db_session, u, False)
+        me_resp = await raw_client.get(
+            "/api/auth/me", headers={"Authorization": f"Bearer {token}"}
+        )
         assert me_resp.status_code == 401
 
 
@@ -204,148 +224,137 @@ class TestWorkflowCrud:
     def _setup(self, db_session: Session):
         """准备流水线 + 三个角色用户 + 一条故障，供各用例复用。"""
         self.db = db_session
-        # 以下 import 在 M1 实现后生效
-        from app.models import User, Pipeline, PipelineFault, FaultRole, FaultStatus
+        from app.models import User, FaultRole
         from app.auth import hash_password
         from app import crud, schemas
 
         self.p = crud.create_pipeline(db_session, schemas.PipelineCreate(code="WF-A", name="工作流A"))
-        self.creator = User(username="creator", password_hash=hash_password("pw"),
+        self.creator = User(username="creator", password_hash=hash_password("pw_placeholder"),
                             display_name="报修人", role=FaultRole.user, is_active=True, token_version=0)
-        self.handler = User(username="handler", password_hash=hash_password("pw"),
+        self.handler = User(username="handler", password_hash=hash_password("pw_placeholder"),
                             display_name="处理人", role=FaultRole.handler, is_active=True, token_version=0)
-        self.admin = User(username="admin", password_hash=hash_password("pw"),
+        self.admin = User(username="admin", password_hash=hash_password("pw_placeholder"),
                           display_name="管理员", role=FaultRole.admin, is_active=True, token_version=0)
         db_session.add_all([self.creator, self.handler, self.admin])
         db_session.commit()
 
-        self.fault = crud.create_fault(db_session, schemas.FaultCreate(
-            pipeline_id=self.p.id, location="1号工位",
-            occurred_at=datetime.now() - timedelta(minutes=30),
-            symptom="传送带异响并卡死需要紧急处理",
-        ))
-        # M5 后 create_fault 将接受 created_by_id 形参，目前直接补刷外键列
-        self.fault.created_by_id = self.creator.id
-        db_session.commit()
-        db_session.refresh(self.fault)
+        # M5 后 create_fault 接受 creator，内部写入 created_by_id 与 create 时间线（同事务）
+        self.fault = crud.create_fault(
+            db_session,
+            schemas.FaultCreate(
+                pipeline_id=self.p.id, location="1号工位",
+                occurred_at=datetime.now() - timedelta(minutes=30),
+                symptom="传送带异响并卡死需要紧急处理",
+            ),
+            creator=self.creator,
+        )
 
-    @pytest.mark.xfail(reason="M5: assign_fault 函数尚未实现")
     def test_sm1_assign(self):
         """指派：pending 状态下管理员指派负责人，状态不变，assignee 设置。"""
         from app import crud
-        f = crud.assign_fault(self.db, self.fault.id, self.handler.id, operator=self.admin)
+        f = crud.assign_fault(self.db, self.fault.id, self.handler.id, actor=self.admin)
         assert f.status.value == "pending"
         assert f.assignee_id == self.handler.id
 
-    @pytest.mark.xfail(reason="M5: start_processing 函数尚未实现")
     def test_sm3_start(self):
         """开始处理：已指派的 pending → processing（仅负责人可操作）。"""
         from app import crud
-        crud.assign_fault(self.db, self.fault.id, self.handler.id, operator=self.admin)
-        f = crud.start_processing(self.db, self.fault.id, operator=self.handler)
+        crud.assign_fault(self.db, self.fault.id, self.handler.id, actor=self.admin)
+        f = crud.start_fault(self.db, self.fault.id, actor=self.handler)
         assert f.status.value == "processing"
 
-    @pytest.mark.xfail(reason="M5: add_progress 函数尚未实现")
     def test_sm4_progress(self):
         """追加进展：processing 状态下负责人可多次记录，时间线增加。"""
-        from app import crud, schemas
+        from app import crud
         from app.models import FaultTimeline
-        crud.assign_fault(self.db, self.fault.id, self.handler.id, operator=self.admin)
-        crud.start_processing(self.db, self.fault.id, operator=self.handler)
-        crud.add_progress(self.db, self.fault.id, "检查电机发现轴承磨损", operator=self.handler)
-        crud.add_progress(self.db, self.fault.id, "已更换轴承待复测", operator=self.handler)
+        crud.assign_fault(self.db, self.fault.id, self.handler.id, actor=self.admin)
+        crud.start_fault(self.db, self.fault.id, actor=self.handler)
+        crud.add_progress(self.db, self.fault.id, "检查电机发现轴承磨损", actor=self.handler)
+        crud.add_progress(self.db, self.fault.id, "已更换轴承待复测", actor=self.handler)
         timelines = self.db.query(FaultTimeline).filter_by(fault_id=self.fault.id).all()
         progress_records = [t for t in timelines if t.action.value == "progress"]
         assert len(progress_records) == 2
 
-    @pytest.mark.xfail(reason="M5: submit_result 函数尚未实现")
     def test_sm6_submit(self):
         """提交结果：processing → awaiting_confirmation，结果说明必填。"""
         from app import crud
-        crud.assign_fault(self.db, self.fault.id, self.handler.id, operator=self.admin)
-        crud.start_processing(self.db, self.fault.id, operator=self.handler)
-        f = crud.submit_result(self.db, self.fault.id, "更换轴承并复测30分钟正常", operator=self.handler)
+        crud.assign_fault(self.db, self.fault.id, self.handler.id, actor=self.admin)
+        crud.start_fault(self.db, self.fault.id, actor=self.handler)
+        f = crud.submit_fault(self.db, self.fault.id, "更换轴承并复测３０分钟正常", actor=self.handler)
         assert f.status.value == "awaiting_confirmation"
 
-    @pytest.mark.xfail(reason="M5: confirm_fault 函数尚未实现")
     def test_sm7_confirm(self):
         """确认完成：awaiting_confirmation + 创建人确认 → done。"""
         from app import crud
-        crud.assign_fault(self.db, self.fault.id, self.handler.id, operator=self.admin)
-        crud.start_processing(self.db, self.fault.id, operator=self.handler)
-        crud.submit_result(self.db, self.fault.id, "更换轴承并复测正常", operator=self.handler)
-        f = crud.confirm_fault(self.db, self.fault.id, operator=self.creator)
+        crud.assign_fault(self.db, self.fault.id, self.handler.id, actor=self.admin)
+        crud.start_fault(self.db, self.fault.id, actor=self.handler)
+        crud.submit_fault(self.db, self.fault.id, "更换轴承并复测正常", actor=self.handler)
+        f = crud.confirm_fault(self.db, self.fault.id, None, actor=self.creator)
         assert f.status.value == "done"
         assert f.closed_at is not None
 
-    @pytest.mark.xfail(reason="M5: return_fault 函数尚未实现")
     def test_sm8_return(self):
         """退回：awaiting_confirmation + 创建人退回 → processing，assignee 不变。"""
         from app import crud
-        crud.assign_fault(self.db, self.fault.id, self.handler.id, operator=self.admin)
-        crud.start_processing(self.db, self.fault.id, operator=self.handler)
-        crud.submit_result(self.db, self.fault.id, "更换轴承并复测正常", operator=self.handler)
-        f = crud.return_fault(self.db, self.fault.id, "复测仍有异响未彻底解决", operator=self.creator)
+        crud.assign_fault(self.db, self.fault.id, self.handler.id, actor=self.admin)
+        crud.start_fault(self.db, self.fault.id, actor=self.handler)
+        crud.submit_fault(self.db, self.fault.id, "更换轴承并复测正常", actor=self.handler)
+        f = crud.return_fault(self.db, self.fault.id, "复测仍有异响未彻底解决", actor=self.creator)
         assert f.status.value == "processing"
         assert f.assignee_id == self.handler.id  # 负责人不变
 
-    @pytest.mark.xfail(reason="M5: done 终态拒绝尚未实现")
     def test_sm9_done_terminal(self):
         """done 后任何操作拒绝。"""
         from app import crud
         from app.exceptions import InvalidTransitionError
-        crud.assign_fault(self.db, self.fault.id, self.handler.id, operator=self.admin)
-        crud.start_processing(self.db, self.fault.id, operator=self.handler)
-        crud.submit_result(self.db, self.fault.id, "更换轴承并复测正常", operator=self.handler)
-        crud.confirm_fault(self.db, self.fault.id, operator=self.creator)
+        crud.assign_fault(self.db, self.fault.id, self.handler.id, actor=self.admin)
+        crud.start_fault(self.db, self.fault.id, actor=self.handler)
+        crud.submit_fault(self.db, self.fault.id, "更换轴承并复测正常", actor=self.handler)
+        crud.confirm_fault(self.db, self.fault.id, None, actor=self.creator)
         with pytest.raises(InvalidTransitionError):
-            crud.start_processing(self.db, self.fault.id, operator=self.handler)
+            crud.start_fault(self.db, self.fault.id, actor=self.handler)
 
-    @pytest.mark.xfail(reason="M5: 权限守卫尚未实现")
     def test_sm11_wrong_handler_rejected(self):
         """非当前负责人不能 start/progress/submit → PermissionError。"""
         from app import crud
         from app.exceptions import PermissionDeniedError
-        crud.assign_fault(self.db, self.fault.id, self.handler.id, operator=self.admin)
+        crud.assign_fault(self.db, self.fault.id, self.handler.id, actor=self.admin)
         with pytest.raises(PermissionDeniedError):
-            crud.start_processing(self.db, self.fault.id, operator=self.creator)
+            crud.start_fault(self.db, self.fault.id, actor=self.creator)
 
-    @pytest.mark.xfail(reason="M5: 改派逻辑尚未实现")
     def test_au7_reassign(self):
         """管理员改派：旧负责人失权、新负责人可操作。"""
         from app import crud
         from app.exceptions import PermissionDeniedError
         from app.models import User, FaultRole
         from app.auth import hash_password
-        handler2 = User(username="handler2", password_hash=hash_password("pw"),
+        handler2 = User(username="handler2", password_hash=hash_password("pw_placeholder"),
                         display_name="处理人2", role=FaultRole.handler, is_active=True, token_version=0)
         self.db.add(handler2)
         self.db.commit()
         # 指派 handler → start → 改派 handler2
-        crud.assign_fault(self.db, self.fault.id, self.handler.id, operator=self.admin)
-        crud.start_processing(self.db, self.fault.id, operator=self.handler)
-        f = crud.reassign_fault(self.db, self.fault.id, handler2.id, "原负责人出差", operator=self.admin)
+        crud.assign_fault(self.db, self.fault.id, self.handler.id, actor=self.admin)
+        crud.start_fault(self.db, self.fault.id, actor=self.handler)
+        f = crud.reassign_fault(self.db, self.fault.id, handler2.id, "原负责人出差", actor=self.admin)
         assert f.assignee_id == handler2.id
         # 旧 handler 不能再 progress
         with pytest.raises(PermissionDeniedError):
-            crud.add_progress(self.db, self.fault.id, "旧负责人试图操作", operator=self.handler)
+            crud.add_progress(self.db, self.fault.id, "旧负责人试图操作", actor=self.handler)
         # 新 handler2 可以
-        crud.add_progress(self.db, self.fault.id, "新负责人继续跟进处理", operator=handler2)
+        crud.add_progress(self.db, self.fault.id, "新负责人继续跟进处理", actor=handler2)
 
-    @pytest.mark.xfail(reason="M5: 管理员代确认尚未实现")
     def test_au8_admin_confirm_on_behalf(self):
         """创建人停用后管理员可代确认（需原因）。"""
         from app import crud
-        crud.assign_fault(self.db, self.fault.id, self.handler.id, operator=self.admin)
-        crud.start_processing(self.db, self.fault.id, operator=self.handler)
-        crud.submit_result(self.db, self.fault.id, "更换轴承并复测正常", operator=self.handler)
-        # 停用创建人
+        crud.assign_fault(self.db, self.fault.id, self.handler.id, actor=self.admin)
+        crud.start_fault(self.db, self.fault.id, actor=self.handler)
+        crud.submit_fault(self.db, self.fault.id, "更换轴承并复测正常", actor=self.handler)
+        # 停用创建人（check_can_confirm 内会判 creator.is_active）
         self.creator.is_active = False
         self.creator.token_version += 1
         self.db.commit()
-        # 管理员代确认
-        f = crud.confirm_fault(self.db, self.fault.id, operator=self.admin,
-                               reason="创建人已停用，管理员代确认")
+        # 管理员代确认：reason 必填（crud 层已校验 is_delegated 分支）
+        f = crud.confirm_fault(self.db, self.fault.id, "创建人已停用，管理员代确认", actor=self.admin)
         assert f.status.value == "done"
 
 
@@ -356,12 +365,58 @@ class TestWorkflowCrud:
 class TestTimelineAtomicity:
     """状态变更与时间线同事务：任一步失败整体回滚。"""
 
-    @pytest.mark.xfail(reason="M5: 同事务保证尚未实现")
-    def test_tl3_atomic_rollback(self, db_session: Session):
-        """若时间线写入失败（如模拟异常），状态不应被改变。"""
-        # 此测试需要在 crud 实现后，monkeypatch FaultTimeline 插入抛异常，
-        # 验证 fault.status 仍为原值。
-        assert False, "TODO M5: monkeypatch timeline insert 抛异常后验证 fault.status 未变"
+    def test_tl3_atomic_rollback(self, db_session: Session, monkeypatch):
+        """若时间线写入失败，状态不应被改变（同事务 commit 从未执行）。"""
+        from app import crud, schemas
+        from app.auth import hash_password
+        from app.models import (
+            FaultRole, FaultStatus, FaultTimeline, Pipeline, PipelineFault, User,
+        )
+
+        admin = User(username="tl3-admin", password_hash=hash_password("pw_placeholder"),
+                     display_name="A", role=FaultRole.admin, is_active=True, token_version=0)
+        handler = User(username="tl3-handler", password_hash=hash_password("pw_placeholder"),
+                       display_name="H", role=FaultRole.handler, is_active=True, token_version=0)
+        creator = User(username="tl3-creator", password_hash=hash_password("pw_placeholder"),
+                       display_name="C", role=FaultRole.user, is_active=True, token_version=0)
+        db_session.add_all([admin, handler, creator])
+        db_session.commit()
+
+        p = Pipeline(code="TL3", name="原子性")
+        db_session.add(p)
+        db_session.commit()
+        fault = crud.create_fault(
+            db_session,
+            schemas.FaultCreate(
+                pipeline_id=p.id, location="工位", occurred_at=datetime.now(),
+                symptom="原子性测试故障现象描述",
+            ),
+            creator=creator,
+        )
+        crud.assign_fault(db_session, fault.id, handler.id, actor=admin)
+        crud.start_fault(db_session, fault.id, actor=handler)
+        # 记录当前数据库状态，确保回滚后仍一致
+        db_session.expire_all()
+        assert db_session.get(PipelineFault, fault.id).status == FaultStatus.processing
+
+        # 让时间线实例化抛异常：_write_timeline 里 FaultTimeline(...) 会即时报，
+        # 导致 submit_fault 末尾的 db.commit() 永远执行不到。
+        def _boom(*args, **kwargs):
+            raise RuntimeError("模拟时间线写入失败")
+
+        monkeypatch.setattr(FaultTimeline, "__init__", _boom)
+
+        with pytest.raises(RuntimeError):
+            crud.submit_fault(db_session, fault.id, "不该生效", actor=handler)
+
+        # 事务未 commit → 数据库里状态仍为 processing；handling_note 仍为空。
+        db_session.rollback()
+        db_session.expire_all()
+        reloaded = db_session.get(PipelineFault, fault.id)
+        assert reloaded.status == FaultStatus.processing
+        assert reloaded.handling_note in (None, "")
+        # 时间线列表不应出现 submit 记录
+        assert not [t for t in reloaded.timelines if t.action.value == "submit"]
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -417,17 +472,60 @@ class TestBugFixes:
 class TestHistoricalData:
     """需求六：旧故障 NULL 外键、handling_note 导入时间线、管理员指派。"""
 
-    @pytest.mark.xfail(reason="M5: NULL created_by 响应显示'历史数据'尚未实现")
-    def test_hd1_null_creator_display(self):
-        """created_by_id=NULL 的故障，API 响应 created_by 字段为 '历史数据'。"""
-        assert False, "TODO M5: GET /api/faults/{id} 旧数据 created_by 返回 '历史数据'"
+    def test_hd1_null_creator_display(self, db_session: Session, admin_user):
+        """created_by_id=NULL 的故障，admin 视角响应里 created_by 为 None（前端渲染为“历史数据”）。"""
+        from app import crud
+        from app.models import Pipeline, PipelineFault
 
-    @pytest.mark.xfail(reason="M2: 旧 handling_note 导入时间线尚未实现")
+        p = Pipeline(code="HD1", name="历史数据")
+        db_session.add(p)
+        db_session.commit()
+        f = PipelineFault(
+            pipeline_id=p.id, location="旧数据工位",
+            occurred_at=datetime.now(), symptom="旧数据故障现象描述",
+            created_by_id=None, assignee_id=None,
+        )
+        db_session.add(f)
+        db_session.commit()
+
+        loaded = crud.get_fault(db_session, f.id, viewer=admin_user)
+        assert loaded.created_by_id is None
+        assert loaded.created_by is None
+        assert loaded.assignee is None
+
+    @pytest.mark.xfail(reason="M2 补测：旧 handling_note → timeline(is_imported=True) 需旧库副本升级，本文件仅覆盖单库行为")
     def test_hd2_imported_note_timeline(self):
         """迁移后旧故障 handling_note 对应一条 is_imported=True 的时间线记录。"""
-        assert False, "TODO M2: 旧库升级后验证 handling_note → timeline(is_imported=True)"
+        assert False, "TODO M2 补测：旧库升级后验证 handling_note → timeline(is_imported=True)"
 
-    @pytest.mark.xfail(reason="M5: 管理员对历史数据指派尚未实现")
-    def test_hd3_admin_assign_historical(self):
-        """历史数据故障（无创建人），管理员可指派负责人继续处理。"""
-        assert False, "TODO M5: 无创建人故障 assign → 正常处理，confirm 走管理员代确认"
+    def test_hd3_admin_assign_historical(self, db_session: Session, admin_user):
+        """历史数据故障（无创建人），管理员指派→完整流程→管理员代确认（需求六.3）。"""
+        from app import crud, schemas
+        from app.auth import hash_password
+        from app.models import FaultRole, Pipeline, PipelineFault, User
+
+        handler = User(username="hd3-handler", password_hash=hash_password("pw_placeholder"),
+                       display_name="处理人", role=FaultRole.handler, is_active=True, token_version=0)
+        db_session.add(handler)
+        db_session.commit()
+
+        p = Pipeline(code="HD3", name="历史流")
+        db_session.add(p)
+        db_session.commit()
+        f = PipelineFault(
+            pipeline_id=p.id, location="历史工位",
+            occurred_at=datetime.now(), symptom="历史数据可继续处理验证",
+            created_by_id=None, assignee_id=None,
+        )
+        db_session.add(f)
+        db_session.commit()
+
+        crud.assign_fault(db_session, f.id, handler.id, actor=admin_user)
+        crud.start_fault(db_session, f.id, actor=handler)
+        crud.submit_fault(db_session, f.id, "已更换传感器并复测正常", actor=handler)
+        # admin 代确认：created_by_id 为 None→is_delegated=True→reason 必填
+        done = crud.confirm_fault(
+            db_session, f.id, "创建人为空的历史数据，管理员代确认", actor=admin_user,
+        )
+        assert done.status.value == "done"
+        assert done.closed_at is not None

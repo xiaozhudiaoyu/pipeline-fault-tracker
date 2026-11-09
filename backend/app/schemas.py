@@ -15,7 +15,7 @@ from datetime import datetime, timedelta, timezone
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from .models import FaultPriority, FaultRole, FaultStatus
+from .models import FaultPriority, FaultRole, FaultStatus, TimelineAction
 
 
 # ── 流水线（主数据）──────────────────────────────────────────────────────
@@ -41,6 +41,21 @@ class PipelineCreate(BaseModel):
 
 
 # ── 故障记录（核心业务实体）──────────────────────────────────────────────
+class UserBrief(BaseModel):
+    """故障响应里嵌套的用户卡：仅 id/username/display_name/role。
+
+    与 UserOut 分开是因为：列表/详情接口需显示创建人与负责人，但不能暴
+    露 is_active/token_version/created_at 等账户字段（需求三.3 “列表不展示登录无关信息”）。
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    username: str
+    display_name: str
+    role: FaultRole
+
+
 class FaultCreate(BaseModel):
     """POST /api/faults 的请求体：登记一条新故障。
 
@@ -84,6 +99,10 @@ class FaultOut(BaseModel):
 
     pipeline 字段是嵌套的 PipelineOut —— 前端列表要直接显示流水线名称，
     嵌套结构省去前端二次请求。为避免 N+1 查询，crud 层查询时用 selectinload 预加载 pipeline。
+
+    第三阶段新增（需求四.1）：created_by / assignee 嵌套 UserBrief，列表与详情展示
+    负责人与创建人。旧数据（created_by_id/assignee_id 为 NULL）返回 null，前端渲染
+    “历史数据”文案（需求一）；服务端不直接返回字符串。
     """
 
     model_config = ConfigDict(from_attributes=True)
@@ -100,6 +119,9 @@ class FaultOut(BaseModel):
     created_at: datetime
     updated_at: datetime
     closed_at: datetime | None = None
+    # 第三阶段新增
+    created_by: UserBrief | None = None
+    assignee: UserBrief | None = None
 
 
 class FaultTransition(BaseModel):
@@ -250,3 +272,122 @@ class UserCreate(BaseModel):
     password: str = Field(min_length=6, max_length=200, description="初始明文密码，存 bcrypt 哈希")
     display_name: str = Field(min_length=1, max_length=100, description="展示名称")
     role: FaultRole = Field(description="固定三角色之一")
+
+
+# ── 故障处理闭环动作请求体（第三阶段需求四）─────────────────────────
+# 每个动作一个子资源端点（需求四.3、D5），不接受客户端直接传目标状态；状态入库
+# 完全由服务端基于当前状态 + 角色判定。extra=forbid 防少字段名递延到 crud。
+class FaultAssignIn(BaseModel):
+    """POST /api/faults/{id}/assign：管理员将未指派故障指派给处理人员。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    assignee_id: int = Field(ge=1, description="接手人用户 ID（必须为 handler 且启用）")
+
+
+class FaultReassignIn(BaseModel):
+    """POST /api/faults/{id}/reassign：改派，理由必填（需求四.3）。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    assignee_id: int = Field(ge=1, description="新负责人用户 ID")
+    reason: str = Field(min_length=2, max_length=500, description="改派理由，时间线写入、不可篡改")
+
+    @field_validator("reason")
+    @classmethod
+    def _reason_strip(cls, v: str) -> str:
+        v = v.strip()
+        if len(v) < 2:
+            raise ValueError("改派理由去除首尾空格后不得少于 2 字")
+        return v
+
+
+class FaultProgressIn(BaseModel):
+    """POST /api/faults/{id}/progress：处理中追加进展（不改变状态）。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    note: str = Field(min_length=2, max_length=2000, description="进展内容，strip 后 ≥ 2 字")
+
+    @field_validator("note")
+    @classmethod
+    def _note_strip(cls, v: str) -> str:
+        v = v.strip()
+        if len(v) < 2:
+            raise ValueError("进展内容去除首尾空格后不得少于 2 字")
+        return v
+
+
+class FaultSubmitIn(BaseModel):
+    """POST /api/faults/{id}/submit：处理人员提交结果，pending→awaiting_confirmation。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    result_note: str = Field(min_length=5, max_length=2000, description="处理结果说明，写入 fault.handling_note 与时间线")
+
+    @field_validator("result_note")
+    @classmethod
+    def _note_strip(cls, v: str) -> str:
+        v = v.strip()
+        if len(v) < 5:
+            raise ValueError("处理结果说明去除首尾空格后不得少于 5 字")
+        return v
+
+
+class FaultConfirmIn(BaseModel):
+    """POST /api/faults/{id}/confirm：创建人确认完成（或 admin 代确认，理由必填）。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    reason: str | None = Field(
+        default=None,
+        max_length=500,
+        description="确认备注；admin 代确认时必填（需求 SM11）",
+    )
+
+
+class FaultReturnIn(BaseModel):
+    """POST /api/faults/{id}/return：创建人退回至 processing（需求四.3、SM9）。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    reason: str = Field(min_length=2, max_length=500, description="退回理由，必填")
+
+    @field_validator("reason")
+    @classmethod
+    def _reason_strip(cls, v: str) -> str:
+        v = v.strip()
+        if len(v) < 2:
+            raise ValueError("退回理由去除首尾空格后不得少于 2 字")
+        return v
+
+
+class FaultPriorityIn(BaseModel):
+    """POST /api/faults/{id}/priority：调整优先级，不影响状态（需求二.2）。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    priority: FaultPriority = Field(description="目标优先级：normal/urgent")
+
+
+class TimelineOut(BaseModel):
+    """GET /api/faults/{id}/timelines 的响应项：时间线一条记录。
+
+    operator_name 优先取当前用户 display_name，用户已删时回退快照；历史导入记录
+    is_imported=True，前端展示“历史数据”。
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    fault_id: int
+    action: TimelineAction
+    operator_id: int | None
+    operator_name: str | None = None
+    from_status: str | None
+    to_status: str | None
+    from_assignee_id: int | None
+    to_assignee_id: int | None
+    note: str | None
+    is_imported: bool
+    created_at: datetime

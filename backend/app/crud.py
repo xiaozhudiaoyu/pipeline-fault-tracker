@@ -14,21 +14,58 @@
 
 from datetime import datetime
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from . import schemas
+from .auth import (
+    check_can_assign,
+    check_can_confirm,
+    check_can_priority_change,
+    check_can_progress,
+    check_can_reassign,
+    check_can_return,
+    check_can_start,
+    check_can_submit,
+    hash_password,
+    verify_password,
+)
 from .exceptions import (
     FaultNotFoundError,
     HandlingNoteLockedError,
     HandlingNoteRequiredError,
     InvalidTransitionError,
+    PermissionDeniedError,
     PipelineCodeDuplicateError,
     PipelineNotFoundError,
     UserNotFoundError,
     UsernameDuplicateError,
 )
-from .models import FaultPriority, FaultStatus, Pipeline, PipelineFault, User
+from .models import (
+    FaultPriority,
+    FaultRole,
+    FaultStatus,
+    FaultTimeline,
+    Pipeline,
+    PipelineFault,
+    TimelineAction,
+    User,
+)
+
+
+def _viewer_filter(viewer: User) -> list:
+    """根据登录角色返回默认视图的 where 条件列表（需求四.4）。
+
+    admin: []—无过滤；
+    handler: 分派给自己 或 自己创建；
+    user: 仅自己创建。
+    旧数据（created_by_id 与 assignee_id 均 NULL）不属任何人的视图，只有 admin 看到（需求六.2）。
+    """
+    if viewer.role == FaultRole.admin:
+        return []
+    if viewer.role == FaultRole.handler:
+        return [or_(PipelineFault.assignee_id == viewer.id, PipelineFault.created_by_id == viewer.id)]
+    return [PipelineFault.created_by_id == viewer.id]
 
 
 # ── 流水线（主数据）──────────────────────────────────────────────────────
@@ -67,42 +104,48 @@ def create_pipeline(db: Session, data: schemas.PipelineCreate) -> Pipeline:
 def list_faults(
     db: Session,
     *,
+    viewer: User,
     pipeline_id: int | None = None,
     status: FaultStatus | None = None,
     priority: FaultPriority | None = None,
+    assignee_id: int | None = None,
+    unassigned: bool = False,
     page: int = 1,
     size: int = 20,
 ) -> tuple[list[PipelineFault], int]:
-    """分页查询故障列表，返回 (当前页记录, 总数)。
+    """分页查询故障列表（第三阶段：加入角色视图与负责人筛选）。
 
-    需求要点：
-      · 按流水线、处理状态、优先级筛选（三个条件都可选，None 表示不限制，可组合使用）；
-      · 默认按发生时间倒序（"列表默认优先展示最近发生的故障"）；
-      · 分页返回 total，前端分页组件据此算总页数。
-
-    selectinload(pipeline) 预加载关联流水线：
-      FaultOut 需要嵌套 pipeline 字段，若懒加载则每条故障都会触发一次 SELECT（N+1 问题）。
-      selectinload 用一条额外的 IN 查询把所有 pipeline 一次性加载，N 条故障只多 1 次查询。
-
-    total 用独立的 count 查询：分页查询只取当前页，无法得知总数，必须单独 COUNT。
-    两个查询共用同一套 where 条件，保证 total 与 items 的筛选口径一致。
+    viewer：当前登录用户；默认按角色过滤（见 _viewer_filter）。
+    assignee_id / unassigned：需求四.4 “管理员可按负责人筛选、查看未指派”，
+    对非 admin 也可用（与角色视图 AND 叠加，自然得到交集）。
+    预加载 pipeline / created_by / assignee，FaultOut 嵌套字段不会触发 N+1。
     """
-    # 数据查询（含预加载）与计数查询，分别构造但共用筛选条件
-    stmt = select(PipelineFault).options(selectinload(PipelineFault.pipeline))
+    stmt = (
+        select(PipelineFault)
+        .options(
+            selectinload(PipelineFault.pipeline),
+            selectinload(PipelineFault.created_by),
+            selectinload(PipelineFault.assignee),
+        )
+    )
     count_stmt = select(func.count()).select_from(PipelineFault)
 
+    conds: list = list(_viewer_filter(viewer))
     if pipeline_id is not None:
-        stmt = stmt.where(PipelineFault.pipeline_id == pipeline_id)
-        count_stmt = count_stmt.where(PipelineFault.pipeline_id == pipeline_id)
+        conds.append(PipelineFault.pipeline_id == pipeline_id)
     if status is not None:
-        stmt = stmt.where(PipelineFault.status == status)
-        count_stmt = count_stmt.where(PipelineFault.status == status)
+        conds.append(PipelineFault.status == status)
     if priority is not None:
-        stmt = stmt.where(PipelineFault.priority == priority)
-        count_stmt = count_stmt.where(PipelineFault.priority == priority)
+        conds.append(PipelineFault.priority == priority)
+    if assignee_id is not None:
+        conds.append(PipelineFault.assignee_id == assignee_id)
+    if unassigned:
+        conds.append(PipelineFault.assignee_id.is_(None))
+    for c in conds:
+        stmt = stmt.where(c)
+        count_stmt = count_stmt.where(c)
 
     total = db.scalar(count_stmt) or 0
-    # 排序 + 分页：occurred_at 倒序；offset 跳过前面页，limit 取本页
     stmt = stmt.order_by(PipelineFault.occurred_at.desc()).offset((page - 1) * size).limit(size)
     items = list(db.scalars(stmt))
     return items, total
@@ -115,166 +158,307 @@ EXPORT_MAX_ROWS = 10000
 def list_faults_for_export(
     db: Session,
     *,
+    viewer: User,
     pipeline_id: int | None = None,
     status: FaultStatus | None = None,
     priority: FaultPriority | None = None,
+    assignee_id: int | None = None,
+    unassigned: bool = False,
     limit: int = EXPORT_MAX_ROWS,
 ) -> list[PipelineFault]:
-    """导出用查询：筛选口径与 list_faults 完全一致，但【不分页】、有安全上限。
-
-    与 list_faults 的差异（对应需求文档 D2 决策）：
-      · 不返回 total、不接受 page/size —— 分页是 UI 概念，导出语义是"筛选出的全部行"；
-      · limit 封顶 EXPORT_MAX_ROWS 行，超出截断（防御性，不报错）；
-      · 排序同样是 occurred_at 倒序，与列表页所见顺序一致。
-
-    筛选条件构造与 list_faults 保持同形（None = 不限制），保证两接口口径一致；
-    selectinload(pipeline) 同理：导出列含 pipeline.code/name，避免 N+1。
-    """
-    stmt = select(PipelineFault).options(selectinload(PipelineFault.pipeline))
-
+    """导出用查询：口径与 list_faults 完全一致（含角色视图与负责人筛选），不分页 + 安全上限。"""
+    stmt = (
+        select(PipelineFault)
+        .options(
+            selectinload(PipelineFault.pipeline),
+            selectinload(PipelineFault.created_by),
+            selectinload(PipelineFault.assignee),
+        )
+    )
+    conds: list = list(_viewer_filter(viewer))
     if pipeline_id is not None:
-        stmt = stmt.where(PipelineFault.pipeline_id == pipeline_id)
+        conds.append(PipelineFault.pipeline_id == pipeline_id)
     if status is not None:
-        stmt = stmt.where(PipelineFault.status == status)
+        conds.append(PipelineFault.status == status)
     if priority is not None:
-        stmt = stmt.where(PipelineFault.priority == priority)
-
+        conds.append(PipelineFault.priority == priority)
+    if assignee_id is not None:
+        conds.append(PipelineFault.assignee_id == assignee_id)
+    if unassigned:
+        conds.append(PipelineFault.assignee_id.is_(None))
+    for c in conds:
+        stmt = stmt.where(c)
     stmt = stmt.order_by(PipelineFault.occurred_at.desc()).limit(limit)
     return list(db.scalars(stmt))
 
 
-def get_fault(db: Session, fault_id: int) -> PipelineFault:
-    """按 ID 取故障详情（含预加载 pipeline），不存在则抛 FaultNotFoundError（404）。
+def get_fault(db: Session, fault_id: int, viewer: User | None = None) -> PipelineFault:
+    """按 ID 取故障详情（含预加载 pipeline / created_by / assignee），不存在抛 404。
 
-    用 select + selectinload 而非 db.get：db.get 不会加载 relationship，
-    而 FaultOut 需要 pipeline 嵌套字段，故统一走带预加载的查询。
+    viewer 非 None 时执行 can_view_fault：无权限时与不存在同返回 404，不向低权限方
+    泄露“这条存在但你看不到”。内部调用（如 create_fault 写完后重新加载）传 None。
     """
     stmt = (
         select(PipelineFault)
-        .options(selectinload(PipelineFault.pipeline))
+        .options(
+            selectinload(PipelineFault.pipeline),
+            selectinload(PipelineFault.created_by),
+            selectinload(PipelineFault.assignee),
+        )
         .where(PipelineFault.id == fault_id)
     )
-    # Session.scalar(stmt)：按主键至多命中一行，返回该 ORM 对象或 None（= execute(stmt).scalar()）。
-    # 注意 Session 没有 scalar_one_or_none（那是 Result 的方法），此处与本文件 count 查询一致用 Session.scalar。
     fault = db.scalar(stmt)
     if fault is None:
         raise FaultNotFoundError(fault_id)
+    if viewer is not None:
+        from .auth import can_view_fault  # 局部导入避免循环
+
+        if not can_view_fault(viewer, fault):
+            raise FaultNotFoundError(fault_id)
     return fault
 
 
-def create_fault(db: Session, data: schemas.FaultCreate) -> PipelineFault:
-    """登记新故障。
+def _write_timeline(
+    db: Session,
+    fault: PipelineFault,
+    action: TimelineAction,
+    operator: User | None,
+    *,
+    from_status: str | None = None,
+    to_status: str | None = None,
+    from_assignee_id: int | None = None,
+    to_assignee_id: int | None = None,
+    note: str | None = None,
+) -> None:
+    """向 session 挂载一条时间线，**不 commit**——同事务由调用方末尾统一提交。
 
-    业务规则：
-      · pipeline_id 必须指向已存在的流水线（get_pipeline 校验，不存在抛 404）；
-      · 新故障一律置为 pending —— 不接受客户端指定初始状态，防止绕过状态流转校验；
-      · priority 由客户端选传（需求二.1 默认普通）：FaultCreate 缺省已填 normal，
-        这里照原值写入；非法取值在 schemas 层就 422，不会流到此处；
-      · occurred_at 是用户填写的业务时间，created_at 由数据库 server_default 生成。
-
-    返回前用 get_fault 重新查询：commit+refresh 后 pipeline 关联未加载，
-    重新走带 selectinload 的查询，确保响应里 pipeline 字段完整。
+    需求四.2「状态更新与时间线插入在同一个 db.commit() 内」由此保证：任一处报错，
+    外层 rollback 会让两者一起回到事务起点。operator=None 仅用于历史数据导入。
     """
-    get_pipeline(db, data.pipeline_id)  # 仅校验存在性，不存在会抛 PipelineNotFoundError
+    entry = FaultTimeline(
+        fault_id=fault.id,
+        action=action,
+        operator_id=operator.id if operator is not None else None,
+        operator_name_snapshot=operator.display_name if operator is not None else None,
+        from_status=from_status,
+        to_status=to_status,
+        from_assignee_id=from_assignee_id,
+        to_assignee_id=to_assignee_id,
+        note=note,
+    )
+    db.add(entry)
+
+
+def create_fault(db: Session, data: schemas.FaultCreate, *, creator: User) -> PipelineFault:
+    """登记新故障（第三阶段：写入 created_by_id + create 时间线，同事务）。
+
+    · pipeline_id 必须存在（get_pipeline 校验 → 404）；
+    · 新故障一律 pending，不接受客户端指定初始状态；
+    · created_by_id 取当前登录用户（**不接受**请求体传入，防伪造）；
+    · db.flush() 取到 fault.id 但保持事务未提交，时间线挂 FK 后一起 commit。
+    """
+    get_pipeline(db, data.pipeline_id)
     fault = PipelineFault(
         pipeline_id=data.pipeline_id,
         location=data.location,
         occurred_at=data.occurred_at,
         symptom=data.symptom,
-        status=FaultStatus.pending,  # 强制初始状态，忽略任何客户端传入
-        priority=data.priority,  # 客户端选传的优先级（未传时 schema 缺省 normal）
+        status=FaultStatus.pending,
+        priority=data.priority,
+        created_by_id=creator.id,
     )
     db.add(fault)
+    db.flush()
+    _write_timeline(
+        db, fault, TimelineAction.create, creator,
+        to_status=FaultStatus.pending.value,
+    )
     db.commit()
     return get_fault(db, fault.id)
 
 
-def update_fault(db: Session, fault_id: int, data: schemas.FaultUpdate) -> PipelineFault:
-    """修改故障基础信息（location / symptom / handling_note / priority），不涉及状态流转。
+def update_fault(
+    db: Session, fault_id: int, data: schemas.FaultUpdate, *, viewer: User
+) -> PipelineFault:
+    """修改基础信息（第三阶段）：pending + (创建人本人 或 admin)，只落 location / symptom。
 
-    业务规则：done 后 handling_note 锁定 —— 完成时的说明是"结案结论"，
-    事后不可篡改（保追溯性），违反抛 HandlingNoteLockedError（409）。
-    location / symptom / priority 不受此限：需求二.1 "修改优先级不改变处理状态"，
-    done 后改优先级仍合理；exclude_unset 只应用传了的字段，status 列不在 changes 里就不会被动。
-
-    exclude_unset=True：只取客户端"传了的"字段 —— 没传即不改；
-    handling_note 的显式 null 已在 schemas.FaultUpdate 层拒绝（422），到这里不会出现。
+    与旧实现的差异：
+      · priority 走 POST /{id}/priority 端点（需时间线记录）；
+      · handling_note 由 submit 动作写入，PATCH 通道不再开放；
+      · 状态门槛：pending 之外不可改（D6 保守：接手后需先退回）。
+    不删旧 handling_note 锁定异常：旧错误码保留防止测试链射，仅本函数不再触发。
     """
-    fault = get_fault(db, fault_id)
+    fault = get_fault(db, fault_id, viewer)
+    if fault.status != FaultStatus.pending:
+        raise InvalidTransitionError(current=fault.status.value, target="edit_basic")
+    if viewer.role != FaultRole.admin and fault.created_by_id != viewer.id:
+        raise PermissionDeniedError("仅创建人或管理员可修改基本信息，且仅限待处理状态")
     changes = data.model_dump(exclude_unset=True)
-
-    # 规则：done 后处理说明锁定（"结案结论"不可篡改）。
-    if "handling_note" in changes and fault.status == FaultStatus.done:
-        raise HandlingNoteLockedError(fault_id)
-
+    # 只放行 location / symptom；传了 priority/handling_note 静默忽略（防旧客户端仍递交时造成 500）
+    changes = {k: v for k, v in changes.items() if k in ("location", "symptom")}
     for field, value in changes.items():
         setattr(fault, field, value)
     db.commit()
-    # commit 触发 updated_at onupdate；重新查询拿含 pipeline 的完整对象（同 create_fault）
     return get_fault(db, fault_id)
 
 
-def transition_fault(
-    db: Session,
-    fault_id: int,
-    target_status: FaultStatus,
-    handling_note: str | None,
-) -> PipelineFault:
-    """推进故障状态 —— 本项目最核心的业务规则所在。
+def _load_handler(db: Session, user_id: int) -> User:
+    """assign/reassign 接手人校验：必须存在、角色 handler、且启用。"""
+    assignee = db.get(User, user_id)
+    if assignee is None or assignee.role != FaultRole.handler or not assignee.is_active:
+        raise PermissionDeniedError("接手人必须是启用中的处理人员（handler）")
+    return assignee
 
-    需求原文："能够将故障从待处理推进至处理中、已完成，并补充和保存处理说明；
-              完成处理时应有相应说明。后端应检查状态流转，已完成的记录不能直接恢复为待处理。"
 
-    合法流转矩阵（行=当前状态，列=目标状态）：
-        current \\ target | pending      | processing   | done
-        ----------------|--------------|--------------|------------------
-        pending         | ✗ 同状态     | ✓            | ✓（note 必填）
-        processing      | ✓ 回退       | ✗ 同状态     | ✓（note 必填）
-        done            | ✗ 不可逆     | ✗ 不可逆     | ✗ 同状态
-
-    校验顺序（先拒非法，再查必填，最后执行）：
-      1. 同状态变更无意义 → InvalidTransitionError（409）
-      2. done 是终态，不可逆 → InvalidTransitionError（409）【需求硬性要求】
-      3. 目标为 done 时 handling_note 必填 → HandlingNoteRequiredError（400）
-      4. 其余（pending↔processing、*→done）合法，执行流转
-    """
+def assign_fault(db: Session, fault_id: int, assignee_id: int, *, actor: User) -> PipelineFault:
+    """指派：pending + 无负责人 → 设定 assignee，状态不变。"""
     fault = get_fault(db, fault_id)
-    current = fault.status
-
-    # 规则 1：同状态变更（如 pending → pending）无意义，拒绝
-    if current == target_status:
-        raise InvalidTransitionError(current.value, target_status.value)
-
-    # 规则 2：done 是终态，不可逆 —— 需求明确"已完成的记录不能直接恢复为待处理"
-    if current == FaultStatus.done:
-        raise InvalidTransitionError(current.value, target_status.value)
-
-    # 规则 3：完成处理必须有说明（需求"完成处理时应有相应说明"）
-    # 注意 strip()：纯空格的 note 视同未填写，避免用 "   " 绕过校验
-    if target_status == FaultStatus.done and (handling_note is None or not handling_note.strip()):
-        raise HandlingNoteRequiredError()
-
-    # ── 执行流转 ──
-    fault.status = target_status
-    # handling_note 为 None 表示"本次不改说明"（如 pending→processing 可只推进不填）；
-    # 传了值就更新（含空串以外的有效说明）。
-    if handling_note is not None:
-        fault.handling_note = handling_note
-    # closed_at：完成时写入"完成时刻"，回退（done 之外的目标）时清空
-    if target_status == FaultStatus.done:
-        fault.closed_at = datetime.now()
-    else:
-        fault.closed_at = None
-
+    check_can_assign(actor, fault)
+    assignee = _load_handler(db, assignee_id)
+    from_id = fault.assignee_id
+    fault.assignee_id = assignee.id
+    _write_timeline(
+        db, fault, TimelineAction.assign, actor,
+        from_status=fault.status.value, to_status=fault.status.value,
+        from_assignee_id=from_id, to_assignee_id=assignee.id,
+    )
     db.commit()
-    # commit 触发了 updated_at 的 onupdate=func.now()；重新查询拿到含 pipeline 的完整对象
     return get_fault(db, fault_id)
+
+
+def reassign_fault(
+    db: Session, fault_id: int, assignee_id: int, reason: str, *, actor: User
+) -> PipelineFault:
+    """改派：pending/processing + 现有负责人 → 新负责人，理由必填写入时间线。"""
+    fault = get_fault(db, fault_id)
+    check_can_reassign(actor, fault)
+    assignee = _load_handler(db, assignee_id)
+    from_id = fault.assignee_id
+    fault.assignee_id = assignee.id
+    _write_timeline(
+        db, fault, TimelineAction.reassign, actor,
+        from_status=fault.status.value, to_status=fault.status.value,
+        from_assignee_id=from_id, to_assignee_id=assignee.id,
+        note=reason,
+    )
+    db.commit()
+    return get_fault(db, fault_id)
+
+
+def start_fault(db: Session, fault_id: int, *, actor: User) -> PipelineFault:
+    """开始处理：pending + 当前负责人 → processing。"""
+    fault = get_fault(db, fault_id)
+    check_can_start(actor, fault)
+    from_status = fault.status
+    fault.status = FaultStatus.processing
+    _write_timeline(
+        db, fault, TimelineAction.start, actor,
+        from_status=from_status.value, to_status=FaultStatus.processing.value,
+    )
+    db.commit()
+    return get_fault(db, fault_id)
+
+
+def add_progress(db: Session, fault_id: int, note: str, *, actor: User) -> PipelineFault:
+    """追加进展：processing + 当前负责人；状态不变，进展写入时间线。"""
+    fault = get_fault(db, fault_id)
+    check_can_progress(actor, fault)
+    _write_timeline(
+        db, fault, TimelineAction.progress, actor,
+        from_status=fault.status.value, to_status=fault.status.value,
+        note=note,
+    )
+    db.commit()
+    return get_fault(db, fault_id)
+
+
+def submit_fault(
+    db: Session, fault_id: int, result_note: str, *, actor: User
+) -> PipelineFault:
+    """提交处理结果：processing + 当前负责人 → awaiting_confirmation；handling_note 一并写入。"""
+    fault = get_fault(db, fault_id)
+    check_can_submit(actor, fault)
+    from_status = fault.status
+    fault.status = FaultStatus.awaiting_confirmation
+    fault.handling_note = result_note
+    _write_timeline(
+        db, fault, TimelineAction.submit, actor,
+        from_status=from_status.value, to_status=FaultStatus.awaiting_confirmation.value,
+        note=result_note,
+    )
+    db.commit()
+    return get_fault(db, fault_id)
+
+
+def confirm_fault(
+    db: Session, fault_id: int, reason: str | None, *, actor: User
+) -> PipelineFault:
+    """确认完成：awaiting_confirmation → done；admin 代确认时 reason 必填（需求 SM11）。"""
+    fault = get_fault(db, fault_id)
+    check_can_confirm(actor, fault)
+    is_delegated = fault.created_by_id != actor.id
+    if is_delegated and (reason is None or not reason.strip()):
+        raise PermissionDeniedError("管理员代确认必须填写理由")
+    from_status = fault.status
+    fault.status = FaultStatus.done
+    fault.closed_at = datetime.now()
+    _write_timeline(
+        db, fault, TimelineAction.confirm, actor,
+        from_status=from_status.value, to_status=FaultStatus.done.value,
+        note=reason,
+    )
+    db.commit()
+    return get_fault(db, fault_id)
+
+
+def return_fault(db: Session, fault_id: int, reason: str, *, actor: User) -> PipelineFault:
+    """退回处理：awaiting_confirmation → processing，理由必填写入时间线。"""
+    fault = get_fault(db, fault_id)
+    check_can_return(actor, fault)
+    from_status = fault.status
+    fault.status = FaultStatus.processing
+    _write_timeline(
+        db, fault, TimelineAction.return_, actor,
+        from_status=from_status.value, to_status=FaultStatus.processing.value,
+        note=reason,
+    )
+    db.commit()
+    return get_fault(db, fault_id)
+
+
+def change_priority(
+    db: Session, fault_id: int, priority: FaultPriority, *, actor: User
+) -> PipelineFault:
+    """优先级调整（AU9）：done 之前 admin 或创建人可调；不影响状态；记入时间线。"""
+    fault = get_fault(db, fault_id)
+    check_can_priority_change(actor, fault)
+    old = fault.priority
+    if old == priority:
+        # 同值“调整”无意义但仍写入时间线（便于回溯“确认过”）；需求未定义拒绝，此处不抛错。
+        pass
+    fault.priority = priority
+    _write_timeline(
+        db, fault, TimelineAction.priority_change, actor,
+        from_status=fault.status.value, to_status=fault.status.value,
+        note=f"优先级 {old.value} → {priority.value}",
+    )
+    db.commit()
+    return get_fault(db, fault_id)
+
+
+def list_timelines(db: Session, fault_id: int, *, viewer: User) -> list[FaultTimeline]:
+    """读取时间线：先走 can_view 检查（get_fault 内），按 created_at 升序返回。
+
+    relationship 已配 order_by=FaultTimeline.created_at，直接取 fault.timelines。
+    """
+    fault = get_fault(db, fault_id, viewer)
+    return list(fault.timelines)
 
 
 # ── 用户（第三阶段）───────────────────────────────────────────────────
 # 注：本层不包含 login 验证——verify_password 属于 auth.py（密码安全属于“认证”不属于“数据访问”）。
 # authenticate() 只是个很薄的“查库 + 转交 auth.verify_password”组合，便于路由与 seed 统一调用。
-from .auth import hash_password, verify_password  # noqa: E402  避免模块顶层循环依赖
+# hash_password / verify_password 已提到文件顶部导入。
 
 
 def get_user(db: Session, user_id: int) -> User:

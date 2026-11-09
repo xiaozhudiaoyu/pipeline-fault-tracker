@@ -27,7 +27,8 @@ from sqlalchemy.orm import Session
 
 from .config import settings
 from .database import get_db
-from .models import User
+from .exceptions import InvalidTransitionError, PermissionDeniedError
+from .models import FaultRole, FaultStatus, PipelineFault, User
 
 logger = logging.getLogger("app.auth")
 
@@ -138,3 +139,179 @@ def get_current_user(
 
 # 供路由签名使用的类型别名：`user: CurrentUser` 等价于 `user: User = Depends(get_current_user)`
 CurrentUser = Annotated[User, Depends(get_current_user)]
+
+
+# ══════════════════════════════════════════════════════════════════════
+# M4 权限依赖层：角色守卫 + 故障归属×状态守卫
+#
+# 分层职责（需求二与需求九.3）：
+#   1. 未登录 → 401（get_current_user 已处理）；
+#   2. 已登录但角色不对 → 403（require_roles）；
+#   3. 角色对但不是该资源的归属人 → 403（check_can_*）；
+#   4. 归属对但当前状态不允许此动作 → 409（InvalidTransitionError）。
+#
+# 后端为最终裁判：前端隐藏按钮只为了体验，不作为安全边界；
+# 任何客户端直接拼接口请求都要进到上面四道之一。
+#
+# 不将 check_can_* 直接包装为 FastAPI 依赖的原因：
+#   不同动作所需上下文不同（有的需 fault，有的需 fault+creator），且
+#   M5 动作端点内部需先取 fault、再判断、再同事务写时间线——拆成依赖反而不能共享事务。
+#   因此本层提供“纯净”函数，由 M5 在 crud 层调用。
+# ══════════════════════════════════════════════════════════════════════
+def _forbidden(detail: str) -> HTTPException:
+    """未登录时的 403 统一出口（与领域 PermissionDeniedError 分开：
+    本函数用于“角色守卫”给路由抛 HTTPException，确保带上 WWW-Authenticate）。
+    业务层（crud）一律抛 PermissionDeniedError，交给 exceptions.py 的 AppError handler。
+    """
+    return HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail=detail,
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+
+
+def require_roles(*roles: FaultRole):
+    """依赖工厂：要求当前登录用户角色属于传入集合。
+
+    用法：
+        from fastapi import Depends
+        admin: User = Depends(require_roles(FaultRole.admin))
+        或使用下方预置的 Annotated 别名 AdminUser / HandlerUser。
+
+    角色不匹配抛 403（而非 401）：身份已确认，重新登录也不会变。
+    """
+    if not roles:
+        raise ValueError("require_roles 需至少传入一个角色")
+
+    def dep(user: CurrentUser) -> User:
+        if user.role not in roles:
+            allowed = "/".join(r.value for r in roles)
+            raise _forbidden(f"本接口仅限角色：{allowed}")
+        return user
+
+    return dep
+
+
+# 预置别名：路由签名写 `user: AdminUser` 即可，无需每处重写 require_roles
+AdminUser = Annotated[User, Depends(require_roles(FaultRole.admin))]
+HandlerUser = Annotated[User, Depends(require_roles(FaultRole.handler))]
+HandlerOrAdminUser = Annotated[User, Depends(require_roles(FaultRole.handler, FaultRole.admin))]
+
+
+# ── 故障归属与动作权限校验（M5 各动作端点在 crud 层调用）─────────────
+def can_view_fault(user: User, fault: PipelineFault) -> bool:
+    """查看权限（需求二.4 + 需求四.4）：
+      · admin 看全部；
+      · handler 看分派给自己的（包含自己创建的）；
+      · user 看自己创建的。
+    历史数据（created_by_id/assignee_id 为 NULL）：仅 admin 可看，
+    因无从归属到当下任何个人（需求六.2）。
+    """
+    if user.role == FaultRole.admin:
+        return True
+    if user.role == FaultRole.handler:
+        return fault.assignee_id == user.id or fault.created_by_id == user.id
+    # FaultRole.user
+    return fault.created_by_id == user.id
+
+
+def check_can_assign(user: User, fault: PipelineFault) -> None:
+    """指派（pending 无负责人 → 设定负责人，状态不变）：
+      · 仅管理员；
+      · done 终态拒绝；
+      · awaiting_confirmation 不允许指派（D6：待确认不改派），需先退回至 processing；
+      · 已有负责人时应走 reassign，而非 assign（避免时间线语义混淡）。
+    """
+    if user.role != FaultRole.admin:
+        raise PermissionDeniedError("仅管理员可指派负责人")
+    if fault.status == FaultStatus.done:
+        raise InvalidTransitionError(current=fault.status.value, target="assign")
+    if fault.status == FaultStatus.awaiting_confirmation:
+        raise InvalidTransitionError(current=fault.status.value, target="assign")
+    if fault.assignee_id is not None:
+        raise PermissionDeniedError("该故障已有负责人，请走改派流程")
+
+
+def check_can_reassign(user: User, fault: PipelineFault) -> None:
+    """改派（现有负责人 → 新负责人，状态延续）：
+      · 仅管理员，且原因必填（在 M5 层校验，不在本函数）；
+      · 仅 pending / processing 可改派（D6：待确认状态需先退回）；
+      · 必须已有负责人（否则应走 assign）。
+    """
+    if user.role != FaultRole.admin:
+        raise PermissionDeniedError("仅管理员可改派负责人")
+    if fault.status not in (FaultStatus.pending, FaultStatus.processing):
+        raise InvalidTransitionError(current=fault.status.value, target="reassign")
+    if fault.assignee_id is None:
+        raise PermissionDeniedError("尚未指派负责人，无法改派")
+
+
+def check_can_start(user: User, fault: PipelineFault) -> None:
+    """开始处理：仅当前负责人，且状态为 pending（需求三 SM2/SM3）。"""
+    if fault.assignee_id != user.id:
+        raise PermissionDeniedError("仅当前负责人可以开始处理")
+    if fault.status != FaultStatus.pending:
+        raise InvalidTransitionError(current=fault.status.value, target="start")
+
+
+def check_can_progress(user: User, fault: PipelineFault) -> None:
+    """追加进展：仅当前负责人，且状态为 processing（SM4）。"""
+    if fault.assignee_id != user.id:
+        raise PermissionDeniedError("仅当前负责人可以追加进展")
+    if fault.status != FaultStatus.processing:
+        raise InvalidTransitionError(current=fault.status.value, target="progress")
+
+
+def check_can_submit(user: User, fault: PipelineFault) -> None:
+    """提交处理结果：仅当前负责人，且状态为 processing（SM6）。"""
+    if fault.assignee_id != user.id:
+        raise PermissionDeniedError("仅当前负责人可以提交结果")
+    if fault.status != FaultStatus.processing:
+        raise InvalidTransitionError(current=fault.status.value, target="submit")
+
+
+def check_can_confirm(user: User, fault: PipelineFault) -> None:
+    """确认完成（SM7）：
+      · 状态必须为 awaiting_confirmation；
+      · 创建人自己确认 → 可（且创建人不同时为负责人，避免自处理自闭环）；
+      · 管理员代确认 → 仅当创建人已停用或不存在（历史数据/已删账号），需求二.5；
+      · 负责人自行确认 → 任何情形都拒绝（SM12）。
+
+    实现细节：读 fault.created_by 会触发 lazy load，调用方需保证当前 session 可查库。
+    """
+    if fault.status != FaultStatus.awaiting_confirmation:
+        raise InvalidTransitionError(current=fault.status.value, target="confirm")
+    # 负责人不能自行确认（无论其当前角色为何）
+    if fault.assignee_id is not None and fault.assignee_id == user.id:
+        raise PermissionDeniedError("负责人不能自行确认完成")
+    # 创建人本人确认
+    if fault.created_by_id is not None and fault.created_by_id == user.id:
+        return
+    # 管理员代确认：仅在创建人不可用时
+    if user.role == FaultRole.admin:
+        creator = fault.created_by
+        if creator is None or not creator.is_active:
+            return
+        raise PermissionDeniedError("创建人仍在启用中，应由创建人本人确认")
+    raise PermissionDeniedError("仅创建人可确认完成，或创建人不可用时由管理员代确认")
+
+
+def check_can_return(user: User, fault: PipelineFault) -> None:
+    """退回处理（SM8）：仅创建人本人，且状态为 awaiting_confirmation。
+    管理员不默认能代退回（需求未提及，按保守处理）。
+    """
+    if fault.status != FaultStatus.awaiting_confirmation:
+        raise InvalidTransitionError(current=fault.status.value, target="return")
+    if fault.created_by_id != user.id:
+        raise PermissionDeniedError("仅创建人可以退回处理")
+
+
+def check_can_priority_change(user: User, fault: PipelineFault) -> None:
+    """优先级调整（AU9）：done 之前，管理员或创建人可调。不要求填写原因（需求未提）。"""
+    if fault.status == FaultStatus.done:
+        raise InvalidTransitionError(current="done", target="priority_change")
+    if user.role == FaultRole.admin:
+        return
+    if fault.created_by_id == user.id:
+        return
+    raise PermissionDeniedError("仅管理员或创建人可调整优先级")

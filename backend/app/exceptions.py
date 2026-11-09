@@ -85,6 +85,28 @@ class FaultNotFoundError(AppError):
         )
 
 
+class PermissionDeniedError(AppError):
+    """403：已登录但无权执行本操作（角色不符/不是归属人/已处理人自行确认等）。
+
+    与 401 的区分：
+      · 401 = 未登录、无身份，客户端应当重新走登录流程；
+      · 403 = 身份已确认，但当前身份不允许做这件事，重新登录也没用。
+    与 404 的取舍（需求九.3 越权拦截）：
+      · 同一记录不同人可见 → 403，方便前端提示“无权查看”；
+      · 跨租户隔离需求下隐藏存在性 → 404（本项目不属多租户场景，默认 403）。
+    """
+
+    status_code = status.HTTP_403_FORBIDDEN
+    code = "permission_denied"
+    default_message = "无权执行此操作"
+
+    def __init__(self, message: str | None = None) -> None:
+        super().__init__(
+            message or self.default_message,
+            details=[{"field": "permission", "type": "denied", "message": message or self.default_message}],
+        )
+
+
 class InvalidTransitionError(AppError):
     """409：状态流转非法（如 done → pending，需求明确禁止"已完成直接恢复为待处理"）。
 

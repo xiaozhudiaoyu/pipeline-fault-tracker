@@ -18,6 +18,20 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from .models import FaultPriority, FaultRole, FaultStatus, TimelineAction
 
 
+def _strip_required(v: str, min_len: int, label: str) -> str:
+    """strip 后重验长度并**回写干净值**（口径同第三阶段动作体的 _note_strip）。
+
+    为什么要单独一个 validator：字段级 min_length / pattern 作用在【未 strip 的原值】上，
+    "5 个空格"这种输入长度够 min_length、又不命中 location 的首字符 pattern，能穿过字段级
+    校验直接入库（需求五.2「必填内容不能只填空格」正是拦这个）。strip 后可能掉到 min_len
+    以下（如 "a " → "a"），所以这里要按同一门槛重验一次，而不是只判空。
+    """
+    stripped = v.strip()
+    if len(stripped) < min_len:
+        raise ValueError(f"{label}去除首尾空格后不得少于 {min_len} 字")
+    return stripped
+
+
 # ── 流水线（主数据）──────────────────────────────────────────────────────
 class PipelineOut(BaseModel):
     """流水线响应体。from_attributes=True 让 FastAPI 能直接把 ORM 的 Pipeline 对象序列化成它。"""
@@ -82,16 +96,34 @@ class FaultCreate(BaseModel):
     @field_validator("occurred_at")
     @classmethod
     def occurred_at_not_in_future(cls, v: datetime) -> datetime:
-        """业务时间不能是未来 —— 登记的是"已发生"的故障。
+        """业务时间不能是未来，且统一转成【本地 naive】入库（需求五.1 时区修复）。
 
         容忍 60 秒时钟偏移：客户端与服务器时钟未必同步，秒级误差不应误拦。
         aware/naive 统一换算成 aware 再比，避免 Python 直接比较抛 TypeError（会变成 500）。
+
+        入库口径（BUG 根因）：库里 DateTime 列是不带时区的 TIMESTAMP，SQLite 落库时
+        【按原值的墙钟字段直存、忽略 tzinfo】—— 客户端传 "2026-11-01T05:00:00Z"（即北京
+        13:00 的 UTC 写法）就会存成 05:00，读回按本地解析显示 05:00，即需求描述的现象。
+        故这里先 astimezone() 转本机时区、再抹掉 tzinfo 存本地墙钟，与 models.py 的
+        _local_now()（created_at/updated_at/closed_at 均本地 naive）口径一致。
         """
         now = datetime.now(timezone.utc)
         v_aware = v if v.tzinfo is not None else v.astimezone()
         if v_aware > now + timedelta(seconds=60):
             raise ValueError("故障发生时间不得晚于当前时间")
-        return v
+        return v_aware.astimezone().replace(tzinfo=None)
+
+    # 首字符空白仍由上面的 pattern 拦下（既有裁定不动），这两个 validator 负责尾部空白
+    # 与「整串空白」——实测登记通道传 symptom="     " 会 201 入库（需求五.2）。
+    @field_validator("location")
+    @classmethod
+    def _location_strip(cls, v: str) -> str:
+        return _strip_required(v, 2, "故障位置")
+
+    @field_validator("symptom")
+    @classmethod
+    def _symptom_strip(cls, v: str) -> str:
+        return _strip_required(v, 5, "故障现象描述")
 
 
 class FaultOut(BaseModel):
@@ -169,13 +201,18 @@ class FaultUpdate(BaseModel):
         min_length=2,
         max_length=200,
         pattern=r"^\S.*$",
-        description="故障发生位置；首字符不得为空白",
+        description="故障发生位置；首字符不得为空白，不接受显式 null（不传即不改）",
     )
-    symptom: str | None = Field(default=None, min_length=5, max_length=1000, description="故障现象描述，5~1000 字")
+    symptom: str | None = Field(
+        default=None,
+        min_length=5,
+        max_length=1000,
+        description="故障现象描述，5~1000 字；不接受显式 null（不传即不改）",
+    )
     # 修改优先级与状态流转是两个端点：这里改 priority 不会碰 status（crud 只应用传了的字段）。
     priority: FaultPriority | None = Field(
         default=None,
-        description="优先级：normal/urgent；不传即不改，非法取值 422",
+        description="优先级：normal/urgent；不传即不改，非法取值 422，不接受显式 null",
     )
     handling_note: str | None = Field(
         default=None,
@@ -183,6 +220,37 @@ class FaultUpdate(BaseModel):
         max_length=2000,
         description="处理说明，不少于 5 字；不接受显式 null（不支持清空）；done 后不可再改（crud 层校验）",
     )
+
+    # 下面几个 validator 拦的两类真实缺陷（需求五.2）：字段级约束作用在未 strip 的原值
+    # 上，纯空格能过 min_length；而类型带 | None 使字段级校验放过 null，crud 用
+    # exclude_unset=True 区分“没传”与“传了 null”，null 会被当成新值 setattr 到 NOT NULL 列上
+    # （实测 PATCH {"location":null} → IntegrityError → 500）。
+    # 需求五.2 要求这类“不允许的值”给明确提示，故统一按 handling_note 既有的 422 口径拦下。
+    @field_validator("location")
+    @classmethod
+    def _location_valid(cls, v: str | None) -> str | None:
+        if v is None:
+            raise ValueError("location 不支持显式置空，不传即不修改")
+        return _strip_required(v, 2, "故障位置")
+
+    @field_validator("symptom")
+    @classmethod
+    def _symptom_valid(cls, v: str | None) -> str | None:
+        if v is None:
+            raise ValueError("symptom 不支持显式置空，不传即不修改")
+        return _strip_required(v, 5, "故障现象描述")
+
+    @field_validator("priority")
+    @classmethod
+    def _priority_not_null(cls, v: FaultPriority | None) -> FaultPriority | None:
+        """显式 null 属非法用法 → 422 明确提示（需求五.2）。
+
+        不传（字段缺席）仍表示“不改”；传合法值仍由 crud 静默忽略（第三阶段改优先级
+        走 POST /{id}/priority，需写时间线），该既有行为由 test_n6 固化，本 validator 不改它。
+        """
+        if v is None:
+            raise ValueError("priority 不支持显式置空；调整优先级请用 POST /api/faults/{id}/priority")
+        return v
 
     @field_validator("handling_note")
     @classmethod

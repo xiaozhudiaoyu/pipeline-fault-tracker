@@ -38,10 +38,10 @@
 #   TL4 时间线列表按 created_at 正序
 #
 # ── 存量缺陷（需求五）──
-#   FX1 时区：输入 13:00 保存后刷新仍显示 13:00
-#   FX2 空格校验：必填字段不能只填空格
-#   FX3 priority:null → 422 而非 500
-#   FX4 data 目录不存在时自动创建
+#   FX1 时区：aware 输入（+08:00 / Z 两种写法）归一为本地 naive，13:00 存后仍显示 13:00
+#   FX2 空格校验：登记与修改两个通道，必填字段都不能只填空格；合法值 strip 后入库
+#   FX3 显式 null：priority/location/symptom 传 null → 422 明确提示（原为 500 或静默忽略），数据不变
+#   FX4 data 目录：SQLite 库文件父目录不存在时自动创建（含 alembic 迁移进程）
 #
 # ── 旧数据兼容（需求六）──
 #   HD1 旧故障 created_by_id/assignee_id 为 NULL → 响应显示"历史数据"
@@ -52,7 +52,8 @@
 # 实现后逐步取消注释或替换为正确路径。
 
 import pytest
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from sqlalchemy.orm import Session
 
 # 这些在 M1/M3 实现后才能正常导入
@@ -424,45 +425,177 @@ class TestTimelineAtomicity:
 # ═══════════════════════════════════════════════════════════════════════════
 
 class TestBugFixes:
-    """需求五：时区/空格/priority-null/data目录。"""
+    """需求五（FX1~FX4）：时区口径 / 空白必填 / 显式 null / SQLite 目录。
 
-    @pytest.mark.xfail(reason="M7-1: 时区 bug 未修复——aware datetime 存库后偏移")
-    def test_fx1_timezone_preserved(self, db_session: Session):
-        """输入北京时间 13:00（ISO 带 +08:00），存库后读出仍为 13:00 naive 本地。"""
+    四条由 M0 的 xfail 红测试改写而来（原写法不构成有效验证）：fx1 调的是已废弃的
+    `create_fault(created_by_id=)` 签名（报 TypeError 而非断言失败）、fx2/fx3 是
+    `assert False` 占位、fx4 直接测 SQLAlchemy 的 create_engine 而非本项目代码。
+    """
+
+    def test_fx1_timezone_preserved(self, db_session: Session, admin_user):
+        """FX1 时区：naive/+08:00/Z 三种写法入库后都是同一本地墙钟（需求五.1）。
+
+        修复前 validator 原样返回入参，SQLite 落库只看墙钟字段、忽略 tzinfo，
+        传 "05:00Z"（= 北京 13:00）就存成 05:00 → 前端按本地解析显示 05:00。
+        断言用 expire_all 后从库重读，避免拿到 session 里尚未刷新的写入实例。
+        """
         from app import crud, schemas
-        from datetime import datetime
+        from app.models import PipelineFault
+
         p = crud.create_pipeline(db_session, schemas.PipelineCreate(code="TZ", name="时区测试"))
-        # 模拟前端发送带时区的 ISO 字符串
-        body = schemas.FaultCreate(
-            pipeline_id=p.id,
-            location="1号工位",
-            occurred_at=datetime.fromisoformat("2026-11-01T13:00:00+08:00"),
-            symptom="时区测试故障现象描述",
+        for iso in (
+            "2026-11-01T13:00:00",        # 前端 el-date-picker 的实际写法（无偏移）
+            "2026-11-01T13:00:00+08:00",  # 带本地偏移
+            "2026-11-01T05:00:00+00:00",  # 同一时刻的 UTC 写法（toISOString 产物）
+        ):
+            body = schemas.FaultCreate(
+                pipeline_id=p.id,
+                location="1号工位",
+                occurred_at=datetime.fromisoformat(iso),
+                symptom="时区测试故障现象描述",
+            )
+            # 出口即本地 naive，与 models._local_now()（created_at 等）口径一致
+            assert body.occurred_at.tzinfo is None, iso
+            f = crud.create_fault(db_session, body, creator=admin_user)
+            db_session.expire_all()
+            stored = db_session.get(PipelineFault, f.id).occurred_at
+            aware = datetime.fromisoformat(iso)
+            expected = (aware.astimezone() if aware.tzinfo else aware).replace(tzinfo=None)
+            assert stored == expected, iso
+            # 需求五.1 的具体场景（本机为北京时间）：三种写法都落在 13:00
+            if datetime.now().astimezone().utcoffset() == timedelta(hours=8):
+                assert stored.hour == 13, iso
+
+    @pytest.mark.anyio
+    async def test_fx1b_api_response_has_no_utc_offset(self, client):
+        """FX1 链路级：POST 传 Z 写法，响应与重查都返回本地墙钟且不带时区后缀。
+
+        响应若带 +00:00/Z，前端 new Date() 会按 UTC 解析再转本地 → 显示偏移；
+         naive ISO 被前端按本地解析，故响应必须是“本地时间 + 无后缀”这一套。
+        """
+        pid = (await client.post("/api/pipelines", json={"code": "TZAPI", "name": "时区链路线"})).json()["id"]
+        resp = await client.post(
+            "/api/faults",
+            json={
+                "pipeline_id": pid,
+                "location": "1号工位",
+                "occurred_at": "2026-11-01T05:00:00Z",  # 北京 13:00 的 UTC 写法
+                "symptom": "时区链路验证故障现象",
+            },
         )
-        f = crud.create_fault(db_session, body, created_by_id=None)
-        # 期望：occurred_at 为 naive 本地 13:00，不是 05:00 UTC
-        assert f.occurred_at.hour == 13
+        assert resp.status_code == 201
+        local_noon = datetime(2026, 11, 1, 5, 0, tzinfo=timezone.utc).astimezone()
+        expected = local_noon.replace(tzinfo=None).isoformat()
+        assert resp.json()["occurred_at"] == expected
+        detail = await client.get(f"/api/faults/{resp.json()['id']}")
+        got = detail.json()["occurred_at"]
+        assert got == expected and "+" not in got and not got.endswith("Z"), got
 
-    @pytest.mark.xfail(reason="M7-2: 空格校验未补全——symptom 纯空格可能绕过")
-    def test_fx2_whitespace_rejected(self):
-        """PATCH 传 symptom='     '（纯空格）应 422。"""
-        assert False, "TODO M7-2: PATCH /api/faults/{id} body={'symptom':'     '} → 422"
+    @pytest.mark.anyio
+    async def test_fx2_whitespace_rejected(self, client):
+        """FX2 空格：必填内容不能只填空格（登记+修改双通道），合法值入库为 strip 后干净值。"""
+        pid = (await client.post("/api/pipelines", json={"code": "WS", "name": "空白校验线"})).json()["id"]
+        # 登记通道：修复前 symptom="     " 能过 min_length=5 → 201 入库
+        blank = await client.post(
+            "/api/faults",
+            json={
+                "pipeline_id": pid,
+                "location": "2号工位",
+                "occurred_at": (datetime.now() - timedelta(minutes=5)).isoformat(),
+                "symptom": "     ",
+            },
+        )
+        assert blank.status_code == 422
+        assert blank.json()["code"] == "validation_error"
+        assert blank.json()["details"][0]["field"] == "symptom"
 
-    @pytest.mark.xfail(reason="M7-3: priority:null 当前触发 500 而非 422")
-    def test_fx3_priority_null_422(self):
-        """PATCH body={"priority": null} → 422 明确提示，不报 500。"""
-        assert False, "TODO M7-3: PATCH /api/faults/{id} body={'priority':null} → 422"
+        created = await client.post(
+            "/api/faults",
+            json={
+                "pipeline_id": pid,
+                "location": "3号工位",
+                "occurred_at": (datetime.now() - timedelta(minutes=5)).isoformat(),
+                "symptom": "传送带异响并卡死",
+            },
+        )
+        assert created.status_code == 201
+        fid = created.json()["id"]
 
-    @pytest.mark.xfail(reason="M7-4: data 目录不存在时启动报错")
-    def test_fx4_auto_create_directory(self, tmp_path):
-        """DATABASE_URL 指向不存在的子目录，engine 创建前自动 mkdir。"""
-        from sqlalchemy import create_engine
+        # 修改通道：纯空格 / 不足长度 都 422，不产生脏数据
+        for payload in ({"symptom": "     "}, {"symptom": "  只三个字  "}):
+            bad = await client.patch(f"/api/faults/{fid}", json=payload)
+            assert bad.status_code == 422, payload
+
+        # 首字符空白仍由字段级 pattern 拦（既有裁定不动，不同于尾部空白的“抹平后接受”）
+        head = await client.patch(f"/api/faults/{fid}", json={"location": " 3号工位"})
+        assert head.status_code == 422
+
+        # 合法但带首尾空白：200，且入库为 trim 后的值
+        ok = await client.patch(
+            f"/api/faults/{fid}", json={"location": "4号工位 ", "symptom": "  传送带异响并卡死  "}
+        )
+        assert ok.status_code == 200
+        assert ok.json()["location"] == "4号工位"
+        assert ok.json()["symptom"] == "传送带异响并卡死"
+
+    @pytest.mark.anyio
+    async def test_fx3_explicit_null_rejected_not_500(self, client):
+        """FX3 显式 null：priority/location/symptom 传 null → 422 明确提示，不报 500、不改数据。
+
+        修复前的三种行为：priority=null 被 crud 过滤后静默忽略（200，调用方以为改成了）；
+        location/symptom=null 直达 setattr → NOT NULL 约束 → IntegrityError 500（已实测复现）。
+        """
+        pid = (await client.post("/api/pipelines", json={"code": "NULLV", "name": "显式空值线"})).json()["id"]
+        created = await client.post(
+            "/api/faults",
+            json={
+                "pipeline_id": pid,
+                "location": "7号工位",
+                "occurred_at": (datetime.now() - timedelta(minutes=5)).isoformat(),
+                "symptom": "显式 null 验证故障现象",
+                "priority": "urgent",
+            },
+        )
+        assert created.status_code == 201
+        fid = created.json()["id"]
+
+        for field in ("priority", "location", "symptom", "handling_note"):
+            resp = await client.patch(f"/api/faults/{fid}", json={field: None})
+            assert resp.status_code == 422, field
+            assert resp.json()["code"] == "validation_error", field
+            assert [d["field"] for d in resp.json()["details"]] == [field], field
+
+        # 四次失败请求都没改坏原数据
+        detail = await client.get(f"/api/faults/{fid}")
+        assert detail.json()["priority"] == "urgent"
+        assert detail.json()["location"] == "7号工位"
+        assert detail.json()["symptom"] == "显式 null 验证故障现象"
+
+    def test_fx4_sqlite_parent_dir_auto_created(self, tmp_path):
+        """FX4 目录：DATABASE_URL 指向不存在的子目录时自动创建；内存库与 PG 不造目录（需求五.4）。
+
+        原缺陷：alembic/env.py 自己 create_engine，不经过 app.database，故新解压项目无
+        backend/data 目录时 `alembic upgrade head` 直接报 unable to open database file；
+        修复后两处共用 app.database.ensure_sqlite_dir，本测试直接测该函数 + 真实连库。
+        """
+        from sqlalchemy import create_engine, text
+
+        from app.database import ensure_sqlite_dir
+
         nested = tmp_path / "data" / "sub" / "test.db"
-        # 当前 database.py 不会自动创建父目录，修复后应能成功
+        assert not nested.parent.exists()
+        ensure_sqlite_dir(f"sqlite:///{nested}")
+        assert nested.parent.is_dir()
+
         engine = create_engine(f"sqlite:///{nested}")
-        # 建 engine 不报错（但真正连库前需 mkdir）
         with engine.connect() as conn:
-            assert conn is not None
+            assert conn.execute(text("select 1")).scalar() == 1
+        engine.dispose()
+
+        # 内存库不需目录；PG 的 database 段是库名，误当路径 mkdir 会凭空造目录
+        ensure_sqlite_dir("sqlite:///:memory:")
+        ensure_sqlite_dir("postgresql+psycopg://u:p@localhost:5432/pft_guard_db")
+        assert not Path("pft_guard_db").exists()
 
 
 # ═══════════════════════════════════════════════════════════════════════════

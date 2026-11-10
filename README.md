@@ -136,6 +136,7 @@ npm run dev
 
 - 迁移目录 `backend/alembic/`，配置 `backend/alembic.ini`（保持 ASCII-only，中文 Windows 下避免编码坑）。
 - **连接串与 app 同源**：`env.py` 从 `app.config.settings` 取 `database_url`，ini 里的 `sqlalchemy.url` 仅是占位；故迁移命令须在 `backend/` 下执行。临时验证可用环境变量 `DATABASE_URL` 覆盖指向其他库文件。
+- **SQLite 库文件父目录自动创建**（需求五.4）：把 `DATABASE_URL` 指到带子目录的路径（如 `sqlite:///./data/fault_tracker.db`）时，新解压的项目里还没有该目录，以前 `upgrade head` 会直接报 `unable to open database file`。现在 `app/database.py` 的 `ensure_sqlite_dir()` 会在建 engine 与跑迁移（`env.py` 也调它）前 `mkdir(parents=True)` 兜住，**无需手工建目录**；内存库 `:memory:` 与 PostgreSQL 不涉及此路径。
 - **常用命令**（在 `backend/` 下，`.venv\Scripts\python.exe -m alembic ...`）：
 
   | 命令 | 作用 |

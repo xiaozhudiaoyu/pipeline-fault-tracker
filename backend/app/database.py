@@ -12,13 +12,34 @@
 #   Session = 一次工作单元，请求级生命周期，用完即关。
 
 from collections.abc import Iterator
+from pathlib import Path
 
 from sqlalchemy import create_engine, event, inspect, text
-from sqlalchemy.engine import Engine
+from sqlalchemy.engine import Engine, make_url
 from sqlalchemy.orm import Session, sessionmaker
 
 from .config import settings
 from .models import Base
+
+
+def ensure_sqlite_dir(url: str) -> None:
+    """SQLite 文件库的父目录不存在时自动创建（需求五.4）。
+
+    原缺陷：把 DATABASE_URL 改成 `sqlite:///./data/fault_tracker.db` 这类带子目录的路径后，
+    新解压的项目里没有 `backend/data/`，首次连库直接 `sqlite3.OperationalError:
+    unable to open database file`（建 engine 本身不报错，它懒连；错在真正 connect 时）。
+    本函数在建 engine / 跑迁移前先把父目录 mkdir(parents=True)，README 无需再加手工建目录步骤。
+
+    两种无需建目录的情形提前返回：非 SQLite（PG 没有“库文件路径”概念，其
+    database 段是库名，拿去 mkdir 会凭空造出一个目录）；内存库 `:memory:` / 无路径 `sqlite://`。
+    """
+    if not url.startswith("sqlite"):
+        return
+    db_path = make_url(url).database
+    if not db_path or db_path == ":memory:":
+        return
+    Path(db_path).expanduser().parent.mkdir(parents=True, exist_ok=True)
+
 
 # ---- Engine（进程级单例）----
 # 按方言分支连接参数：
@@ -28,6 +49,10 @@ from .models import Base
 #   PostgreSQL（psycopg）不认这个参数，传进去会 TypeError，故仅 SQLite 时传。
 _is_sqlite = settings.database_url.startswith("sqlite")
 _connect_args = {"check_same_thread": False} if _is_sqlite else {}
+
+# 建 engine 前保证库文件父目录存在（alembic/env.py 自己建 engine，那里也调了同一函数）。
+if _is_sqlite:
+    ensure_sqlite_dir(settings.database_url)
 
 engine: Engine = create_engine(
     settings.database_url,

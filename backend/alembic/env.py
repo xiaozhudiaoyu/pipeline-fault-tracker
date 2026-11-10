@@ -13,6 +13,7 @@ from alembic import context
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.config import settings  # noqa: E402
+from app.database import ensure_sqlite_dir  # noqa: E402
 from app.models import Base  # noqa: E402
 
 # this is the Alembic Config object, which provides
@@ -37,7 +38,14 @@ target_metadata = Base.metadata
 
 
 def _database_url() -> str:
-    """取与 app 相同的连接串（读 backend/.env，未配置时用默认 SQLite 路径）。"""
+    """取与 app 相同的连接串（读 backend/.env，未配置时用默认 SQLite 路径）。
+
+    顺便保证库文件父目录存在（需求五.4）：迁移进程不经过 app.database 的建 engine 路径
+    （本文件自己 create_engine / 离线模式只给 URL），所以那边新增的自动建目录在这里
+    也得调一次；否则 DATABASE_URL 指向 `./data/` 等不存在的子目录时，
+    `alembic upgrade head` 会报 unable to open database file。
+    """
+    ensure_sqlite_dir(settings.database_url)
     return settings.database_url
 
 

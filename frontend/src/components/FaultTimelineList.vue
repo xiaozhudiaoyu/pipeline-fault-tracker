@@ -40,17 +40,17 @@ function operatorLabel(entry: TimelineEntry): string {
 
 <template>
   <div class="timeline-panel">
-    <h3 class="panel-title">处理时间线</h3>
+    <h3 class="panel-title">处理记录</h3>
 
     <div v-if="isFetching && items.length === 0" class="timeline-state">加载中…</div>
     <el-alert
       v-else-if="isError"
-      :title="`时间线加载失败：${error?.message ?? '未知错误'}`"
+      :title="`处理记录加载失败：${error?.message ?? '未知错误'}`"
       type="warning"
       show-icon
       :closable="false"
     />
-    <el-empty v-else-if="items.length === 0" description="暂无时间线记录" :image-size="60" />
+    <el-empty v-else-if="items.length === 0" description="暂无处理记录" :image-size="60" />
 
     <el-timeline v-else>
       <el-timeline-item

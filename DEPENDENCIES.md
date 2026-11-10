@@ -17,6 +17,7 @@
 | 2026-09-30 | backend：`uv add "psycopg[binary]"`（阶段二 P3 PostgreSQL 驱动，运行时依赖） | 33 → 36（+1 直接 +2 传递） | `pyproject.toml dependencies` + `uv.lock`（+91 行）+ 安装日志（见「十」） |
 | 2026-11-03 | backend：`uv add bcrypt pyjwt`（阶段三 M3 认证，运行时依赖） | 36 → 38（+2 直接，0 传递） | `pyproject.toml dependencies` + `uv.lock` + `uv run python -c "import bcrypt, jwt"` + 13 个 M3 集成测试全绿（见「十一」） |
 | 2026-09-18 | frontend：`npm install`（Vue 3.4 / Vite 4.5 / Element Plus 2.5 / TanStack Query v4 / Zod 3 链） | 0 → 75 | `package-lock.json` + `npm ls --depth=0`（见「四」） |
+| 2026-11-10 | frontend：`@element-plus/icons-vue` 登记为直接依赖（~2.3.2，详情页「返回列表」按钮图标 ArrowLeft） | 顶层依赖 5 → 6；node_modules 包数 75 → 76（0 新增下载，原为 element-plus 传递依赖） | `package.json` + `package-lock.json` 根 deps + `npm run build` exit 0（见「十二」） |
 
 ## 二、版本锁定决策（2026-09-18）
 
@@ -163,3 +164,12 @@
 - **配套变更**：`app/config.py` 新增 `secret_key` / `jwt_algorithm` / `access_token_expire_minutes` 三项（默认 dev 专用密钥，生产必覆盖）；`.env.example` 同步新增 `SECRET_KEY` / `ACCESS_TOKEN_EXPIRE_MINUTES` 注释块
 - **运行验证**：新增 `tests/test_api_auth.py` 13 个集成测试均绿（login 成功/错误密码/停用账号/me 取当前用户/无效 token/登出后旧 token 立即失效/bcrypt 同明文两次哈希不同/重复用户名 409）；全量 `uv run pytest` **122 passed, 21 xfailed, 0 errors**（xfail 为 M0 红基线，待 M4/M5 转绿）
 - **依赖边界**：未动任何既有包版本；本次仅新增两个运行时包与相关配套代码，无删改
+
+## 十二、frontend 图标依赖 @element-plus/icons-vue（2026-11-10）
+
+- **背景**：故障详情页「返回列表」按钮增加返回图标（ArrowLeft）。经用户确认选「正式声明 EP 图标依赖」方案（规则 2.5）。本包此前是 element-plus 的传递依赖（`^2.3.1`，已装 2.3.2），未在本项目 `package.json` 声明——「四、依赖边界」曾记录「全量引入 Element Plus，无需 icons-vue」，本次为按业务首次引入图标范式，**反转该边界决策**，故单独登记。
+- **命令**：`frontend/package.json` `dependencies` 新增 `"@element-plus/icons-vue": "~2.3.2"`（沿用项目 `~x.y.z` 约定，与已装 2.3.2 一致）→ `npm install`。
+- **结果**：`npm install` → `up to date, audited 76 packages`（75 → 76，0 新增下载，仅在锁文件根 `packages[""]` 登记为直接依赖）；`package-lock.json` 根 `dependencies` 写入 `~2.3.2`，node_modules 解析 2.3.2 tarball（`npm ls`/grep 证实）。
+- **用途**：`FaultDetailView.vue` 导入 `ArrowLeft`，`<el-button link :icon="ArrowLeft">返回列表</el-button>`（本项目首个图标组件用法）。
+- **运行验证**：`vue-tsc --noEmit` exit 0；`npm run build` exit 0（built 25.70s）；chunk >500kB 告警为 EP 全量引入既有项（见「四」已知提示），非本次新增。界面图标显示属运行态，待用户刷新页面目视确认。
+- **依赖边界**：未动任何既有包版本；仅新增 1 个直接依赖声明 + 代码 1 处引用。Node 16 兼容（icons-vue 2.x 无 Node 版本硬约束）。与功能改动同属一次提交范围，如需可拆分单独提交（规则 3.5）。

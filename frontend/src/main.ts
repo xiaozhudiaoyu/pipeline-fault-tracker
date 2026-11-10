@@ -14,16 +14,22 @@ import { createApp } from 'vue'
 import ElementPlus from 'element-plus'
 import zhCn from 'element-plus/es/locale/lang/zh-cn'
 import 'element-plus/dist/index.css'
-import { VueQueryPlugin } from '@tanstack/vue-query'
+import { QueryClient, VueQueryPlugin } from '@tanstack/vue-query'
 
 import App from './App.vue'
 import router from './router'
+import { bindQueryClient } from './composables/useAuth'
 import './styles/main.css'
 
 const app = createApp(App)
 
+// 显式创建 QueryClient（而非交给 VueQueryPlugin 自建默认实例）：
+// 把实例交给 useAuth.bindQueryClient，登录/登出/401 时清空缓存，防跨账号数据残留。
+const queryClient = new QueryClient()
+bindQueryClient(queryClient)
+
 app.use(ElementPlus, { locale: zhCn })
 app.use(router)
-app.use(VueQueryPlugin)
+app.use(VueQueryPlugin, { queryClient })
 
 app.mount('#app')

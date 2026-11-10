@@ -73,7 +73,7 @@ function onReset() {
 <template>
   <section class="fault-create">
     <header class="create-header">
-      <h2 class="create-title">登记故障</h2>
+      <h2 class="create-title">新建故障</h2>
       <el-button link @click="router.push({ name: 'fault-list' })">返回列表</el-button>
     </header>
 
@@ -155,7 +155,9 @@ function onReset() {
 }
 .create-title {
   margin: 0;
-  font-size: 20px;
+  /* 全局字阶 L1：页面标题 18px/600 */
+  font-size: 18px;
+  font-weight: 600;
 }
 .create-form {
   max-width: 640px;

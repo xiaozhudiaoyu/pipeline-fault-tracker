@@ -24,3 +24,17 @@ body {
   color: #303133;
   background: #f5f7fa;
 }
+
+/* Chrome/Edge 自动填充全局补丁：浏览器会给已填充的 input 强行刷上自己的底色，
+   在输入框两侧形成色差白条（登录页与用户管理「新建账号」对话框均复现）。
+   标准手法：白色 inset 大阴影盖掉填充底色 + 超长 transition 延迟 Chrome 重绘。
+   属浏览器级修正而非组件样式，故破例放全局、全站输入框统一生效
+   （原 LoginView scoped 内同款补丁已删除，避免两处维护）。 */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus {
+  -webkit-text-fill-color: #303133;
+  -webkit-box-shadow: 0 0 0 1000px #fff inset;
+  caret-color: #303133;
+  transition: background-color 9999s ease-in-out 0s;
+}

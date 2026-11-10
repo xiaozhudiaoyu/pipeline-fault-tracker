@@ -1,8 +1,9 @@
 // 领域类型与常量：与后端 backend/app/schemas.py 的响应契约一一对应（规则 3.4：字段名/类型核对出处）。
 // 说明：后端 datetime 字段经 JSON 序列化为 ISO 8601 字符串，故前端一律用 string 承接。
+import type { UserBrief } from './user'
 
-// 故障状态枚举（后端 models.FaultStatus 的值：pending / processing / done）
-export type FaultStatus = 'pending' | 'processing' | 'done'
+// 故障状态枚举（后端 models.FaultStatus；第三阶段 D2：既有三值不动，新增待确认）
+export type FaultStatus = 'pending' | 'processing' | 'awaiting_confirmation' | 'done'
 
 // 故障优先级枚举（第二阶段，后端 models.FaultPriority：normal / urgent）
 export type FaultPriority = 'normal' | 'urgent'
@@ -29,6 +30,9 @@ export interface Fault {
   created_at: string // ISO 8601
   updated_at: string // ISO 8601
   closed_at: string | null // ISO 8601；未完成为 null
+  // 第三阶段新增（后端 FaultOut.created_by/assignee：嵌套 UserBrief，旧数据为 null → 渲染“历史数据”）
+  created_by: UserBrief | null
+  assignee: UserBrief | null
 }
 
 // 分页列表（后端 FaultListOut）
@@ -39,11 +43,15 @@ export interface FaultList {
   size: number
 }
 
-// GET /api/faults 查询参数（全部可选；不传=不筛选/用后端默认 page=1 size=20）
+// GET /api/faults 查询参数（全部可选；不传=不筛选/用后端默认 page=1 size=20）。
+// 第三阶段：角色默认视图由后端裁决（admin 全量/handler 本人相关/user 仅本人创建），
+// 前端不传视图参数；assignee_id/unassigned 仅对 admin 有实际过滤意义（非 admin 与角色视图取交集）。
 export interface FaultListParams {
   pipeline_id?: number
   status?: FaultStatus
   priority?: FaultPriority
+  assignee_id?: number
+  unassigned?: boolean
   page?: number
   size?: number
 }
@@ -58,21 +66,12 @@ export interface FaultCreatePayload {
   priority?: FaultPriority
 }
 
-// PATCH /api/faults/{id}/transition 请求体（后端 FaultTransition）
-export interface FaultTransitionPayload {
-  target_status: FaultStatus
-  handling_note?: string | null
-}
-
-// PATCH /api/faults/{id} 请求体（后端 FaultUpdate）——修改基础信息，不含状态流转。
-// 全部可选：后端用 exclude_unset 只应用「传了的」键，故前端只发有改动的键。
-// 注意：handling_note 不接受显式 null（后端 422），不改就不发这个键；done 后不可改（后端 409）。
-// priority 不受 done 锁定限制，且改它不会改状态（后端需求二.1）。
+// PATCH /api/faults/{id} 请求体（后端 FaultUpdate）——第三阶段收窄为只改 location/symptom：
+// 后端仅 pending 且创建人/admin 可改；priority 改走 POST /{id}/priority，
+// handling_note 由「提交处理结果」动作写入，PATCH 通道已关闭（旧字段传了会被静默忽略）。
 export interface FaultUpdatePayload {
   location?: string
   symptom?: string
-  handling_note?: string
-  priority?: FaultPriority
 }
 
 // 统一错误结构（后端 ErrorOut / FieldErrorOut）
@@ -87,17 +86,23 @@ export interface ApiErrorBody {
   details: FieldError[]
 }
 
-// 状态展示元数据：中文标签 + el-tag 颜色类型（供 StatusTag / 筛选下拉 / 状态推进面板复用，避免各处重复）
-export const FAULT_STATUS_META: Record<FaultStatus, { label: string; tag: 'info' | 'warning' | 'success' }> = {
+// 状态展示元数据：中文标签 + el-tag 颜色类型（供 StatusTag / 筛选下拉 / 时间线复用，避免各处重复）。
+// 第三阶段四态：待确认（awaiting_confirmation）用 primary 区别于处理中的 warning 与已完成的 success。
+export const FAULT_STATUS_META: Record<
+  FaultStatus,
+  { label: string; tag: 'primary' | 'info' | 'warning' | 'success' }
+> = {
   pending: { label: '待处理', tag: 'info' },
   processing: { label: '处理中', tag: 'warning' },
+  awaiting_confirmation: { label: '待确认', tag: 'primary' },
   done: { label: '已完成', tag: 'success' },
 }
 
-// 状态下拉选项（顺序固定：待处理 → 处理中 → 已完成）
+// 状态筛选选项（顺序固定：按处理流程推进方向 待处理 → 处理中 → 待确认 → 已完成）
 export const FAULT_STATUS_OPTIONS: { value: FaultStatus; label: string }[] = [
   { value: 'pending', label: FAULT_STATUS_META.pending.label },
   { value: 'processing', label: FAULT_STATUS_META.processing.label },
+  { value: 'awaiting_confirmation', label: FAULT_STATUS_META.awaiting_confirmation.label },
   { value: 'done', label: FAULT_STATUS_META.done.label },
 ]
 
@@ -113,18 +118,9 @@ export const FAULT_PRIORITY_OPTIONS: { value: FaultPriority; label: string }[] =
   { value: 'urgent', label: FAULT_PRIORITY_META.urgent.label },
 ]
 
-// 状态机合法流转表：镜像后端 crud.transition_fault 的流转矩阵（后端是最终裁判，前端仅用于 UX——
-// 只把「当前状态下允许的流转」渲染成按钮，避免用户点了才被 409 拒绝）。
-//   pending    → processing（说明可选） / done（说明必填）
-//   processing → pending（回退，说明可选） / done（说明必填）
-//   done       → 终态不可逆（空数组，不渲染任何流转按钮）
-export const ALLOWED_TRANSITIONS: Record<FaultStatus, FaultStatus[]> = {
-  pending: ['processing', 'done'],
-  processing: ['pending', 'done'],
-  done: [],
-}
+// （第三阶段 D5）旧 ALLOWED_TRANSITIONS / isNoteRequired 已随 /transition 端点一并废除：
+// 可执行动作由后端基于「当前状态 × 角色 × 归属」判定，前端在 FaultActionPanel 内镜像同一矩阵渲染按钮。
 
-// 目标状态是否需要必填处理说明（对应后端 HandlingNoteRequiredError：target=done 时 handling_note 必填）
-export function isNoteRequired(target: FaultStatus): boolean {
-  return target === 'done'
-}
+// 未分派故障的筛选哨兵值：负责人下拉里「未分派」项的选项值（真实用户 id 从 1 起，-1 不冲突）。
+// 列表页把它换算成 { unassigned: true } 查询参数，不直接发给后端。
+export const UNASSIGNED_SENTINEL = -1

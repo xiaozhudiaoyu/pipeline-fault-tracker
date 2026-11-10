@@ -1,14 +1,15 @@
 <script setup lang="ts">
-// 修改基础信息面板：默认只读，点「编辑」展开表单（预填当前值）→ 保存/取消。
-// 校验镜像后端 FaultUpdate（faultUpdateSchema），但后端是最终裁判（非法/锁定返回 422/409）。
-// 业务规则：done 后 handling_note 锁定不可改（镜像 crud.update_fault 的 409），禁用输入避免用户点了才被拒。
+// 修改基础信息面板（第三阶段收窄）：默认只读，点「编辑」展开表单（预填当前值）→ 保存/取消。
+// 可改字段仅剩 location / symptom：后端 crud.update_fault 只应用这两个键，
+// priority 改走动作面板「调整优先级」（需时间线记录），handling_note 由「提交处理结果」写入。
+// 可见性镜像后端门槛：仅 pending 且（创建人本人 或 admin），其余情况整块不渲染（后端仍是最终裁判）。
 import { computed, reactive, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 
 import { useFaultMutations } from '../composables/useFaultMutations'
+import { currentUser, isAdmin } from '../composables/useAuth'
 import { faultUpdateSchema } from '../schemas/fault'
-import { FAULT_PRIORITY_OPTIONS } from '../types/fault'
-import type { Fault, FaultPriority, FaultUpdatePayload } from '../types/fault'
+import type { Fault, FaultUpdatePayload } from '../types/fault'
 
 const props = defineProps<{ fault: Fault }>()
 
@@ -16,30 +17,30 @@ const { update } = useFaultMutations()
 // 同登记页：把嵌套 Ref 提为顶层别名，模板中才会自动解包成布尔值。
 const submitting = update.isLoading
 
+// 权限门槛（镜像 crud.update_fault）：pending + (创建人 或 admin)
+const canEdit = computed(
+  () =>
+    props.fault.status === 'pending' &&
+    (isAdmin.value || (!!currentUser.value && props.fault.created_by?.id === currentUser.value.id))
+)
+
 // 编辑态开关：false=只读（只显示「编辑」按钮），true=展开表单
 const editing = ref(false)
 
-const form = reactive<{ location: string; symptom: string; handling_note: string; priority: FaultPriority }>({
+const form = reactive<{ location: string; symptom: string }>({
   location: '',
   symptom: '',
-  handling_note: '',
-  priority: 'normal',
 })
 const fieldErrors = reactive<Record<string, string>>({})
-
-// done 后处理说明锁定（镜像后端 update_fault：done 时改 handling_note → 409）
-const noteLocked = computed(() => props.fault.status === 'done')
 
 function clearErrors() {
   for (const key of Object.keys(fieldErrors)) delete fieldErrors[key]
 }
 
-// 进入编辑态：用当前值预填表单（handling_note 为 null 时填空串）
+// 进入编辑态：用当前值预填表单
 function startEdit() {
   form.location = props.fault.location
   form.symptom = props.fault.symptom
-  form.handling_note = props.fault.handling_note ?? ''
-  form.priority = props.fault.priority
   clearErrors()
   editing.value = true
 }
@@ -77,15 +78,6 @@ function onSubmit() {
   if (loc !== props.fault.location) payload.location = loc
   const sym = form.symptom.trim()
   if (sym !== props.fault.symptom) payload.symptom = sym
-  // 优先级（第二阶段）：仅在改动时发；后端保证改它不碰 status（需求二.1），done 后也可改。
-  if (form.priority !== props.fault.priority) payload.priority = form.priority
-  // handling_note：done 锁定不发；非 done 时仅在「非空且有改动」时发（后端不支持清空/显式 null）。
-  if (!noteLocked.value) {
-    const note = form.handling_note.trim()
-    if (note.length > 0 && note !== (props.fault.handling_note ?? '')) {
-      payload.handling_note = note
-    }
-  }
 
   // 没有任何改动：不发请求，直接退出编辑态
   if (Object.keys(payload).length === 0) {
@@ -107,7 +99,7 @@ function onSubmit() {
 </script>
 
 <template>
-  <div class="edit-panel">
+  <div v-if="canEdit" class="edit-panel">
     <h3 class="panel-title">修改基础信息</h3>
 
     <el-button v-if="!editing" type="primary" plain @click="startEdit">编辑</el-button>
@@ -135,29 +127,6 @@ function onSubmit() {
         />
       </el-form-item>
 
-      <el-form-item label="优先级">
-        <!-- 修改优先级不改变处理状态（需求二.1）；done 后仍可改（不受说明锁定限制） -->
-        <el-select v-model="form.priority" class="control">
-          <el-option v-for="opt in FAULT_PRIORITY_OPTIONS" :key="opt.value" :label="opt.label" :value="opt.value" />
-        </el-select>
-      </el-form-item>
-
-      <el-form-item
-        :label="noteLocked ? '处理说明（已完成，锁定）' : '处理说明'"
-        :error="fieldErrors.handling_note"
-      >
-        <el-input
-          v-model="form.handling_note"
-          type="textarea"
-          :rows="3"
-          :disabled="noteLocked"
-          :placeholder="noteLocked ? '故障已完成，按业务规则处理说明不可修改' : '可修改处理说明（一旦填写至少 5 个字）'"
-          maxlength="2000"
-          show-word-limit
-          class="control-wide"
-        />
-      </el-form-item>
-
       <el-form-item>
         <el-button type="primary" :loading="submitting" @click="onSubmit">保存</el-button>
         <el-button :disabled="submitting" @click="cancelEdit">取消</el-button>
@@ -174,7 +143,9 @@ function onSubmit() {
 }
 .panel-title {
   margin: 0 0 16px;
+  /* 全局字阶 L2：面板标题 16px，字重补齐 600 与其他标题统一 */
   font-size: 16px;
+  font-weight: 600;
 }
 .control {
   width: 320px;

@@ -1,12 +1,13 @@
 <script setup lang="ts">
-// 故障详情页：展示单条故障的全部字段 + 状态推进面板。
+// 故障详情页：展示单条故障的全部字段 + 动作面板 + 处理时间线（第三阶段 M6）。
 // id 来自路由参数（router props: true，字符串）；转数字后交给 useFaultDetail（其 enabled 守卫非法 id）。
 import { computed } from 'vue'
 import { useRouter } from 'vue-router'
 
 import StatusTag from '../components/StatusTag.vue'
 import PriorityTag from '../components/PriorityTag.vue'
-import StatusTransitionPanel from '../components/StatusTransitionPanel.vue'
+import FaultActionPanel from '../components/FaultActionPanel.vue'
+import FaultTimelineList from '../components/FaultTimelineList.vue'
 import FaultEditPanel from '../components/FaultEditPanel.vue'
 import { useFaultDetail } from '../composables/useFaultDetail'
 import { formatDateTime } from '../utils/format'
@@ -57,6 +58,13 @@ const errorMessage = computed(() => {
         <el-descriptions-item label="优先级">
           <PriorityTag :priority="fault.priority" />
         </el-descriptions-item>
+        <!-- 创建人/负责人（第三阶段，需求六.2）：旧数据为 null → 「历史数据」话术，不显示空白 -->
+        <el-descriptions-item label="创建人">
+          {{ fault.created_by ? `${fault.created_by.display_name}（${fault.created_by.username}）` : '历史数据/未关联账号' }}
+        </el-descriptions-item>
+        <el-descriptions-item label="负责人">
+          {{ fault.assignee ? `${fault.assignee.display_name}（${fault.assignee.username}）` : '未指派' }}
+        </el-descriptions-item>
         <el-descriptions-item label="处理说明">{{ fault.handling_note || '—' }}</el-descriptions-item>
         <el-descriptions-item label="创建时间">{{ formatDateTime(fault.created_at) }}</el-descriptions-item>
         <el-descriptions-item label="更新时间">{{ formatDateTime(fault.updated_at) }}</el-descriptions-item>
@@ -64,7 +72,8 @@ const errorMessage = computed(() => {
       </el-descriptions>
 
       <FaultEditPanel :fault="fault" />
-      <StatusTransitionPanel :fault="fault" />
+      <FaultActionPanel :fault="fault" />
+      <FaultTimelineList :fault-id="faultId" />
     </template>
   </section>
 </template>
@@ -83,7 +92,9 @@ const errorMessage = computed(() => {
 }
 .detail-title {
   margin: 0;
-  font-size: 20px;
+  /* 全局字阶 L1：页面标题 18px/600 */
+  font-size: 18px;
+  font-weight: 600;
 }
 .detail-loading {
   padding: 40px;

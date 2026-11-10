@@ -3,8 +3,11 @@
 // 职责：
 //   · 统一拼接 BASE_URL（VITE_API_BASE_URL）+ 路径 + 查询参数；
 //   · 统一 JSON 序列化/反序列化；
+//   · 第三阶段：统一注入 Authorization: Bearer（token 来自 utils/token 的 localStorage）；
+//     已登录状态下收到 401（token 过期/被停用/被 bump 失效）触发登出回调跳登录页；
 //   · 把非 2xx 响应转成携带后端 {code, message, details} 的 ApiError，供上层按 code 分支、按 details 标红。
 import type { ApiErrorBody } from '../types/fault'
+import { getToken, notifyUnauthorized } from '../utils/token'
 
 // 后端源地址（见 frontend/.env.example）；接口路径自带 /api 前缀，故这里只拼源。
 const BASE_URL = import.meta.env.VITE_API_BASE_URL
@@ -53,10 +56,16 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
   const { method = 'GET', body, signal, query } = options
   const hasBody = body !== undefined
 
+  // 第三阶段：有 token 就带 Authorization 头（登录前无 token 照发，公开接口不受影响）。
+  const token = getToken()
+  const headers: Record<string, string> = {}
+  if (hasBody) headers['Content-Type'] = 'application/json'
+  if (token) headers['Authorization'] = `Bearer ${token}`
+
   const resp = await fetch(buildUrl(path, query), {
     method,
     signal,
-    headers: hasBody ? { 'Content-Type': 'application/json' } : undefined,
+    headers: Object.keys(headers).length > 0 ? headers : undefined,
     body: hasBody ? JSON.stringify(body) : undefined,
   })
 
@@ -69,6 +78,9 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
   const data: unknown = text ? JSON.parse(text) : null
 
   if (!resp.ok) {
+    // 携带 token 的请求收到 401 = 登录态已失效（过期/停用/改密 bump）：触发登出回调跳登录页。
+    // 登录接口自身密码错误的 401 不算（无 token 不会进此分支）。
+    if (resp.status === 401 && token) notifyUnauthorized()
     // 后端错误体统一为 {code, message, details}；非该结构（如网关返回的 HTML）时兜底。
     const errBody: ApiErrorBody =
       data !== null && typeof data === 'object' && 'code' in data

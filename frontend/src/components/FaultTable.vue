@@ -17,7 +17,9 @@ const emit = defineEmits<{
 </script>
 
 <template>
-  <el-table v-loading="loading" :data="faults" style="width: 100%" empty-text="暂无故障记录" stripe border>
+  <!-- height=100%：依赖外层 .list-table 定高容器，启用 el-table 内部滚动 + 表头固定 -->
+  <el-table v-loading="loading" :data="faults" style="width: 100%" height="100%" empty-text="暂无故障记录" stripe border>
+    <!-- <el-table-column type="index" label="编号" width="80" /> -->
     <el-table-column prop="id" label="编号" width="80" />
     <el-table-column label="流水线" min-width="150" show-overflow-tooltip>
       <template #default="{ row }">{{ row.pipeline?.name ?? '—' }}</template>
@@ -37,6 +39,13 @@ const emit = defineEmits<{
       <template #default="{ row }">
         <PriorityTag :priority="row.priority" />
       </template>
+    </el-table-column>
+    <!-- 创建人/负责人（第三阶段）：旧数据 null → 「历史数据」「未指派」，不显示空白 -->
+    <el-table-column label="创建人" width="110" show-overflow-tooltip>
+      <template #default="{ row }">{{ row.created_by?.display_name ?? '历史数据' }}</template>
+    </el-table-column>
+    <el-table-column label="负责人" width="110" show-overflow-tooltip>
+      <template #default="{ row }">{{ row.assignee?.display_name ?? '未指派' }}</template>
     </el-table-column>
     <el-table-column label="操作" width="110" align="center" fixed="right">
       <template #default="{ row }">

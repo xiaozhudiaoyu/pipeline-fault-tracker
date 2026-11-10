@@ -476,7 +476,7 @@ def get_user_by_username(db: Session, username: str) -> User | None:
 
 
 def list_users(db: Session) -> list[User]:
-    """返回全部用户，按 username 升序（管理员管理页使用，M4 接入）。"""
+    """返回全部用户，按 username 升序（管理员管理页与指派下拉使用，M6 接入）。"""
     stmt = select(User).order_by(User.username)
     return list(db.scalars(stmt))
 
@@ -485,7 +485,7 @@ def create_user(db: Session, data: schemas.UserCreate) -> User:
     """创建用户。username 全表唯一，重复抛 UsernameDuplicateError（409）。
 
     不开放自助注册（需求二），本函数仅供：
-      · M4 管理员接口 POST /api/users 调用；
+      · M6 管理员接口 POST /api/users 调用；
       · M8 seed.py 初始化测试账号时调用。
     """
     if get_user_by_username(db, data.username) is not None:
@@ -532,6 +532,16 @@ def set_user_active(db: Session, user: User, active: bool) -> User:
     user.is_active = active
     if not active:
         user.token_version += 1
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    return user
+
+
+def reset_password(db: Session, user: User, new_password: str) -> User:
+    """管理员重置密码：换哈希 + bump token_version（被重置者旧 token 立即失效，D3）。"""
+    user.password_hash = hash_password(new_password)
+    user.token_version += 1
     db.add(user)
     db.commit()
     db.refresh(user)

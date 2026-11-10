@@ -274,6 +274,26 @@ class UserCreate(BaseModel):
     role: FaultRole = Field(description="固定三角色之一")
 
 
+class UserActiveIn(BaseModel):
+    """PATCH /api/users/{id}/active 请求体：启用/停用账号（管理员）。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    is_active: bool = Field(description="true=启用，false=停用（停用即时失效该用户全部 token）")
+
+
+class UserResetPasswordIn(BaseModel):
+    """POST /api/users/{id}/reset-password 请求体：管理员重置密码。
+
+    与 UserCreate.password 同口径（≥6 位）；重置后 token_version bump，
+    该用户已登录的所有 token 立即失效（D3，与停用/改密同一失效机制）。
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    password: str = Field(min_length=6, max_length=200, description="新明文密码，存 bcrypt 哈希")
+
+
 # ── 故障处理闭环动作请求体（第三阶段需求四）─────────────────────────
 # 每个动作一个子资源端点（需求四.3、D5），不接受客户端直接传目标状态；状态入库
 # 完全由服务端基于当前状态 + 角色判定。extra=forbid 防少字段名递延到 crud。

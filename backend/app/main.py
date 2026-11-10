@@ -20,7 +20,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from .config import settings
 from .database import init_models
 from .exceptions import register_exception_handlers
-from .routers import auth, faults, pipelines
+from .routers import auth, faults, pipelines, users
 
 
 @asynccontextmanager
@@ -56,6 +56,7 @@ app = FastAPI(
         {"name": "pipelines", "description": "流水线主数据：列表查询与创建。"},
         {"name": "faults", "description": "故障记录：登记、查询（按流水线/状态筛选）、详情、状态流转。"},
         {"name": "auth", "description": "认证（第三阶段）：登录、登出、当前用户。"},
+        {"name": "users", "description": "用户管理（第三阶段）：创建、启停、重置密码，仅管理员。"},
     ],
 )
 
@@ -80,6 +81,7 @@ app.add_middleware(
 # ---- 挂载业务路由 ----
 # 各 router 自带 /api/pipelines、/api/faults 前缀；tags 与上面 openapi_tags 对应。
 app.include_router(auth.router)
+app.include_router(users.router)
 app.include_router(pipelines.router)
 app.include_router(faults.router)
 

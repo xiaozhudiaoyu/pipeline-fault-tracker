@@ -5,9 +5,9 @@
 #   POST /api/auth/logout  —— 使当前 token 立即失效（token_version bump），需登录
 #   GET  /api/auth/me      —— 返回当前登录用户，前端刷新页面时用于恢复登录态
 #
-# 未做（属 M4 权限层）：
-#   · 业务接口（faults/pipelines）的登录校验——M4 统一挂 require_role；
-#   · 用户管理接口（/api/users）——M4 提供管理员创建/停用能力。
+# 边界提示（已由其他模块承接）：
+#   · 业务接口（faults/pipelines）的登录校验——M4/M5 已统一挂 CurrentUser/AdminUser；
+#   · 用户管理接口（/api/users）——M6 提供（routers/users.py，仅管理员）。
 #
 # 为什么 login 抛 401 而不是 404：
 #   "用户名不存在" 与 "密码错误" 使用同一话术，防止攻击者用返回信息枚举有效账号。

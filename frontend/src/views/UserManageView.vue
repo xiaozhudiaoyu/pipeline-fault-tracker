@@ -188,11 +188,13 @@ function onResetSubmit() {
     <!-- 新建账号：字段约束镜像后端 UserCreate（userCreateSchema），重名 409 由 mutation 统一提示 -->
     <el-dialog v-model="createVisible" title="新建账号" width="480px" :close-on-click-modal="false">
       <el-form label-position="top" @submit.prevent>
+        <!-- 关闭浏览器自动填充：el-input 默认 autocomplete=off 会被 Chrome 对密码框无视，须显式 new-password；
+             否则管理员本机已保存的账号会被填进「登录名/初始密码」，污染新建表单甚至泄露自己的密码 -->
         <el-form-item label="登录名（3~50 字符，创建后不可改）" :error="createErrors.username">
-          <el-input v-model="createForm.username" maxlength="50" placeholder="如 zhangsan" class="dialog-control" />
+          <el-input v-model="createForm.username" maxlength="50" placeholder="如 zhangsan" autocomplete="off" class="dialog-control" />
         </el-form-item>
         <el-form-item label="初始密码（至少 6 位，请线下告知本人）" :error="createErrors.password">
-          <el-input v-model="createForm.password" type="password" maxlength="200" show-password class="dialog-control" />
+          <el-input v-model="createForm.password" type="password" maxlength="200" show-password autocomplete="new-password" class="dialog-control" />
         </el-form-item>
         <el-form-item label="展示名称" :error="createErrors.display_name">
           <el-input v-model="createForm.display_name" maxlength="100" placeholder="如 张三" class="dialog-control" />

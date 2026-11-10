@@ -13,6 +13,20 @@ from datetime import datetime
 from sqlalchemy import DateTime, Enum, ForeignKey, String, Text, func
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
+# 系统时间口径（M6 验收反馈，BUG-B）：created_at/updated_at 统一存**本地时间**。
+#   · 旧写法 server_default=func.now() 在 SQLite/PG 容器都产生 UTC，naive ISO 被前端
+#     按本地解析 → 显示早 8 小时；而 closed_at 一直是 datetime.now()（本地），两种口径并存。
+#   · 现改用 ORM 层 default/onupdate=datetime.now（本机写入），与 closed_at 对齐；
+#     server_default 保留仅作绕过 ORM 直接 SQL 写入时的兜底（那种路径不在本项目写操作范围内）。
+#   · 免 Alembic 迁移：default/onupdate 是 Python 层行为，不改列 DDL。
+#   · 已知代价：存量 UTC 旧数据比新数据早 8 小时（开发库演示数据，不修补）；
+#     跨时区部署需求出现时应改走「统一 UTC + 前端转本地」方案。
+
+
+def _local_now() -> datetime:
+    """本地时间工厂（naive，与库内 DateTime 列口径一致）。"""
+    return datetime.now()
+
 
 class Base(DeclarativeBase):
     """所有 ORM 模型的共同基类。
@@ -145,9 +159,10 @@ class User(Base):
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime,
+        default=_local_now,
         server_default=func.now(),
         nullable=False,
-        comment="账号创建时间",
+        comment="账号创建时间（本地口径，见文件头 _local_now 注）",
     )
 
     def __repr__(self) -> str:
@@ -193,9 +208,10 @@ class Pipeline(Base):
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime,
+        default=_local_now,
         server_default=func.now(),
         nullable=False,
-        comment="入库时间，由数据库生成",
+        comment="入库时间，由应用层生成（本地口径）",
     )
 
     # ---- relationship：一对多的"一"端 ----
@@ -288,20 +304,21 @@ class PipelineFault(Base):
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime,
+        default=_local_now,
         server_default=func.now(),
         nullable=False,
-        comment="记录入库时间，由数据库生成",
+        comment="记录入库时间（本地口径，见文件头 _local_now 注）",
     )
 
-    # updated_at：每次 UPDATE 时由数据库自动刷新（onupdate=func.now()）。
-    # 注意 onupdate 是 SQLAlchemy 层行为（ORM UPDATE 时触发），非数据库 DDL 的 ON UPDATE；
-    # 绕过 ORM 的直接 SQL UPDATE 不会刷新它。本项目所有写操作都走 ORM，足够。
+    # updated_at：每次 UPDATE 时刷新（onupdate= 是 SQLAlchemy 层行为，绕过 ORM 的直接 SQL 不会触发）。
+    # 本项目所有写操作都走 ORM，足够；server_default 仅作建表兜底。
     updated_at: Mapped[datetime] = mapped_column(
         DateTime,
+        default=_local_now,
+        onupdate=_local_now,
         server_default=func.now(),
-        onupdate=func.now(),
         nullable=False,
-        comment="最后更新时间，ORM UPDATE 时自动刷新",
+        comment="最后更新时间，ORM UPDATE 时自动刷新（本地口径）",
     )
 
     # closed_at：状态变为 done 时写入，记录"完成时刻"；未完成时为 NULL。
@@ -437,9 +454,10 @@ class FaultTimeline(Base):
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime,
+        default=_local_now,
         server_default=func.now(),
         nullable=False,
-        comment="记录创建时间（操作发生时间）",
+        comment="记录创建时间（操作发生时间，本地口径）",
     )
 
     # ---- relationship ----
@@ -447,6 +465,20 @@ class FaultTimeline(Base):
         back_populates="timelines",
         foreign_keys=[fault_id],
     )
+
+    # 操作人（M6 验收反馈，BUG-A）：TimelineOut.operator_name 经 from_attributes 读下方同名 property。
+    # lazy="selectin"：加载 fault.timelines 时批量 IN 查一次 users，避免逐条懒加载 N+1。
+    # 不设 cascade：删用户走业务层（本系统无删号入口），FK ondelete=SET NULL 已防孤儿引用。
+    operator: Mapped["User | None"] = relationship(
+        "User",
+        foreign_keys=[operator_id],
+        lazy="selectin",
+    )
+
+    @property
+    def operator_name(self) -> str | None:
+        """操作人显示名：优先当前用户 display_name，账号已删（SET NULL）时回退写入时快照。"""
+        return self.operator.display_name if self.operator is not None else self.operator_name_snapshot
 
     def __repr__(self) -> str:
         return (

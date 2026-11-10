@@ -529,3 +529,68 @@ class TestHistoricalData:
         )
         assert done.status.value == "done"
         assert done.closed_at is not None
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# 第七部分：M6 验收反馈缺陷（时间线操作人序列化 + 系统时间本地口径）
+#   BUG-A operator_name：TimelineOut.operator_name 恒为 null——ORM FaultTimeline 上没有
+#     该属性（只有 operator_name_snapshot 列），from_attributes 取不到就落默认值 None。
+#     此前的 TL 测试只直构 ORM 对象未经序列化，缺陷漏网 → 本组走完整 HTTP 链补盖。
+#   BUG-B 时间口径：created_at/updated_at 用 server_default=func.now()，SQLite 的
+#     CURRENT_TIMESTAMP 与 PG 容器都产生 UTC；naive ISO 被前端按本地解析 → 早 8 小时。
+#     口径已定（统一存本地时间，与 closed_at 的 datetime.now() 对齐），免 DDL 迁移。
+# ═══════════════════════════════════════════════════════════════════════
+
+
+class TestTimelineOperatorAndClock:
+    """TL1「谁、何时」在 HTTP 响应层的真实落地验证（client 默认身份 admin，display_name=测试管理员）。"""
+
+    @staticmethod
+    async def _seed_fault(client) -> int:
+        """造一条流水线 + 一条故障，返回故障 id（集成链路从入口造数，同 test_api_faults 手法）。"""
+        p = await client.post("/api/pipelines", json={"code": "OPCLK", "name": "口径验证线"})
+        assert p.status_code == 201
+        f = await client.post(
+            "/api/faults",
+            json={
+                "pipeline_id": p.json()["id"],
+                "location": "6号工位",
+                "occurred_at": (datetime.now() - timedelta(hours=1)).isoformat(),
+                "symptom": "时间线与操作人口径验证",
+            },
+        )
+        assert f.status_code == 201
+        return f.json()["id"]
+
+    @pytest.mark.anyio
+    async def test_bug_a_timeline_operator_name_serialized(self, client):
+        """BUG-A：create 动作的时间线序列化必须带操作人显示名（此前恒为 null → 前端全员「历史数据」）。"""
+        fid = await self._seed_fault(client)
+        resp = await client.get(f"/api/faults/{fid}/timelines")
+        assert resp.status_code == 200
+        entries = resp.json()
+        assert len(entries) == 1
+        assert entries[0]["action"] == "create"
+        assert entries[0]["operator_name"] == "测试管理员"
+
+    @pytest.mark.anyio
+    async def test_bug_b_system_time_is_local_clock(self, client):
+        """BUG-B：故障与时间线的 created_at 应为本地时间（与 datetime.now() 同口径，容差 5 分钟）。
+
+        修复前存的是 UTC → 差约 8 小时，本断言即红；不拿 occurred_at（业务时间由用户填）做基准。
+        """
+        fid = await self._seed_fault(client)
+        now = datetime.now()
+
+        detail = await client.get(f"/api/faults/{fid}")
+        fault_ts = datetime.fromisoformat(detail.json()["created_at"])
+        assert abs((now - fault_ts).total_seconds()) < 300, (
+            f"故障 created_at={fault_ts} 与本地时间 {now} 相差超 5 分钟（疑似 UTC 口径）"
+        )
+
+        tl = await client.get(f"/api/faults/{fid}/timelines")
+        timeline_ts = datetime.fromisoformat(tl.json()[0]["created_at"])
+        assert abs((now - timeline_ts).total_seconds()) < 300, (
+            f"时间线 created_at={timeline_ts} 与本地时间 {now} 相差超 5 分钟（疑似 UTC 口径）"
+        )
+

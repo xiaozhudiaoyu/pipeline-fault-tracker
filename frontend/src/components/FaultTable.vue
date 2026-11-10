@@ -49,7 +49,7 @@ const emit = defineEmits<{
     </el-table-column>
     <el-table-column label="操作" width="110" align="center" fixed="right">
       <template #default="{ row }">
-        <el-button type="primary" link @click="emit('detail', row.id)">查看详情</el-button>
+        <el-button size="small" type="primary" link @click="emit('detail', row.id)">查看详情</el-button>
       </template>
     </el-table-column>
   </el-table>

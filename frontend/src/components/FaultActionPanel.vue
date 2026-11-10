@@ -326,7 +326,7 @@ const dialogLoading = computed(() => {
 }
 .waiting-hint {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 8px;
   margin: 0 0 16px;
 }

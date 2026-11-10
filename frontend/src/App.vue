@@ -6,15 +6,35 @@
 // 「用户管理」入口仅管理员可见（体验层隐藏，真拦截在后端 /api/users 的 AdminUser 依赖）。
 import { computed } from 'vue'
 import { useRoute } from 'vue-router'
+// 仅为面板宽度跟随触发器提供 Popper 类型（type-only 导入，编译期擦除，不新增运行时依赖）
+import type { Options } from '@popperjs/core'
 
 import { currentUser, isAdmin, logout } from './composables/useAuth'
-import { FAULT_ROLE_META } from './types/user'
+// 角色展示暂隐藏（见模板 line 下拉项），FAULT_ROLE_META 随 roleLabel 一并注释，恢复时取消注释即可
+// import { FAULT_ROLE_META } from './types/user'
 
 const route = useRoute()
 const isLoginPage = computed(() => route.name === 'login')
 
+// 下拉面板宽度跟随触发器（头像 + 姓名那一行）：自定义 Popper modifier 读取 reference
+// （即 el-dropdown 默认插槽的触发元素）宽度，写为面板 min-width；modifier 按 name 合并，不覆盖 EP 内置项。
+const dropdownPopperOptions: Partial<Options> = {
+  modifiers: [
+    {
+      name: 'matchTriggerWidth',
+      enabled: true,
+      phase: 'beforeWrite',
+      requires: ['computeStyles'],
+      fn: ({ state }) => {
+        state.styles.popper.minWidth = `${state.rects.reference.width}px`
+      },
+    },
+  ],
+}
+
 // 角色文案：未知角色兜底显示原始值（防后端加新角色时前端白屏）
-const roleLabel = computed(() => (currentUser.value ? FAULT_ROLE_META[currentUser.value.role]?.label ?? currentUser.value.role : ''))
+// 暂隐藏（角色下拉项被注释），noUnusedLocals 不允许未使用，恢复时取消注释即可
+// const roleLabel = computed(() => (currentUser.value ? FAULT_ROLE_META[currentUser.value.role]?.label ?? currentUser.value.role : ''))
 </script>
 
 <template>
@@ -28,13 +48,24 @@ const roleLabel = computed(() => (currentUser.value ? FAULT_ROLE_META[currentUse
         <RouterLink v-if="isAdmin" class="nav-link" to="/users">用户管理</RouterLink>
       </nav>
 
-      <!-- 顶栏右侧：当前用户 + 登出（仅登录后展示） -->
+      <!-- 顶栏右侧：用户头像 + 退出下拉（仅登录后展示） -->
       <div v-if="!isLoginPage && currentUser" class="app-user">
-        <span class="user-name">{{ currentUser.display_name }}</span>
-        <el-tag size="small" disable-transitions>{{ roleLabel }}</el-tag>
-        <!-- 竖分割线：身份信息与「登出」操作分隔（EP 内置组件，无新依赖） -->
-        <el-divider class="user-divider" direction="vertical" />
-        <el-button link type="danger" @click="logout">登出</el-button>
+        <el-dropdown
+          trigger="click"
+          :popper-options="dropdownPopperOptions"
+          @command="(cmd: string) => cmd === 'logout' && logout()"
+        >
+          <div class="user-trigger">
+            <el-avatar :size="30">{{ currentUser.display_name.charAt(0) }}</el-avatar>
+            <span class="user-name">{{ currentUser.display_name }}</span>
+          </div>
+          <template #dropdown>
+            <el-dropdown-menu>
+              <!-- <el-dropdown-item disabled>{{ roleLabel }}</el-dropdown-item> -->
+              <el-dropdown-item command="logout">退出</el-dropdown-item>
+            </el-dropdown-menu>
+          </template>
+        </el-dropdown>
       </div>
     </el-header>
     <el-main class="app-main">
@@ -73,13 +104,15 @@ const roleLabel = computed(() => (currentUser.value ? FAULT_ROLE_META[currentUse
   gap: 8px;
   margin-left: auto;
 }
-.user-name {
-  font-size: 14px;
-  color: var(--el-text-color-primary, #303133);
+.user-trigger {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  outline: none;
 }
-/* 分割线间距由 .app-user 的 gap:8px 统一控制，去掉 EP 默认的 0 8px 外边距防叠加过宽 */
-.user-divider {
-  margin: 0;
+.user-name {
+  color: var(--el-text-color-primary, #303133);
 }
 .nav-link {
   font-size: 16px;

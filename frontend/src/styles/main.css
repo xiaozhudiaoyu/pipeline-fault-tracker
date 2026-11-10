@@ -19,6 +19,9 @@ body,
 body {
   font-family: 'Helvetica Neue', Helvetica, 'PingFang SC', 'Hiragino Sans GB',
     'Microsoft YaHei', Arial, sans-serif;
+  /* 统一基础字号：14px 对齐 Element Plus --el-font-size-base，消除「组件 14px / 裸文本默认 16px」的落差；
+     标题类仍按全局字阶在各 .vue 的 <style scoped> 内显式设定（L0 20 / L1 18 / L2 16），不依赖此基准。 */
+  font-size: 14px;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   color: #303133;

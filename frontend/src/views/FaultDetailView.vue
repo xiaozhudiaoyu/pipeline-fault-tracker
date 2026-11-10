@@ -65,7 +65,7 @@ onBeforeUnmount(() => compactMql?.removeEventListener('change', syncCompact))
       <div class="detail-body">
         <!-- 左栏：基础信息 + 修改基础信息 + 处理时间线 -->
         <div class="detail-main">
-          <el-descriptions :column="2" border size="normal" class="detail-desc">
+          <el-descriptions :column="2" border size="default" class="detail-desc">
             <el-descriptions-item label="编号">{{ fault.id }}</el-descriptions-item>
             <el-descriptions-item label="所属流水线">
               {{ fault.pipeline?.name ?? '—' }}（{{ fault.pipeline?.code ?? '—' }}）
@@ -148,7 +148,7 @@ onBeforeUnmount(() => compactMql?.removeEventListener('change', syncCompact))
   padding: 16px;
   background: #fff;
   border: 1px solid var(--el-border-color-lighter, #ebeef5);
-  border-radius: 8px;
+  border-radius: 4px;
 }
 /* 右栏已是独立卡片，去掉动作面板自带的顶部分隔线与上间距，避免重复边框 */
 .detail-side :deep(.action-panel) {

@@ -3,6 +3,7 @@
 // 后端仍是最终裁判（非法输入返回 422/404），前端校验只为即时反馈、减少无效请求（规则 3.4）。
 import { reactive } from 'vue'
 import { useRouter } from 'vue-router'
+import { Back } from '@element-plus/icons-vue'
 
 import { useFaultMutations } from '../composables/useFaultMutations'
 import { usePipelines } from '../composables/usePipelines'
@@ -74,7 +75,9 @@ function onReset() {
   <section class="fault-create">
     <header class="create-header">
       <h2 class="create-title">新建故障</h2>
-      <el-button link @click="router.push({ name: 'fault-list' })">返回列表</el-button>
+      <el-button link @click="router.push({ name: 'fault-list' })">
+        <el-icon class="el-icon--left"><Back /></el-icon>返回列表
+      </el-button>
     </header>
 
     <el-form label-width="100px" label-position="right" class="create-form" @submit.prevent>

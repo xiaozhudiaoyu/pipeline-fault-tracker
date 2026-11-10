@@ -7,26 +7,33 @@
 #      四种状态与指派、改派、退回等闭环动作（前端 M6 三账号验收用）。
 #
 # 运行（在 backend/ 目录、激活 .venv 后）：
-#     $env:SEED_PASSWORD="你的演示密码"; python seed.py        # PowerShell
-#     SEED_PASSWORD=你的演示密码 python seed.py                 # bash
+#     $env:SEED_PASSWORD="你的演示密码"; python seed.py        # PowerShell（环境变量）
+#     SEED_PASSWORD=你的演示密码 python seed.py                 # bash（环境变量）
+#     不导变量也行：把 SEED_PASSWORD=你的演示密码 写进 backend/.env（两处都给时环境变量优先）
 #
 # 设计要点：
-#   · 密码走环境变量 SEED_PASSWORD（≥6 位），不落代码、不入库明文（crud.create_user 内 bcrypt 哈希）；
-#     仅当库中还缺少演示账号时才要求该变量——全部已存在则免变量直接跳过（幂等）；
+#   · 密码取自 settings.seed_password（≥6 位），环境变量与 .env 两条通道皆通，
+#     不落代码、不入库明文（crud.create_user 内 bcrypt 哈希）；
+#     仅当库中还缺少演示账号时才要求该密码——全部已存在则免配置直接跳过（幂等）；
 #   · 账号幂等按 username 逐个判断：老库（只有流水线没有用户）再跑一次即可补上账号；
 #   · 数据幂等沿用旧口径：已有流水线则跳过故障播种；
+#   · 可读性代价（改法选型时已知）：旧写法 `os.getenv("SEED_PASSWORD")` 显式，读本文件的人一眼能看出
+#     密码从哪来；现写法只剩 settings.seed_password 一行，「字段名 → 环境变量 SEED_PASSWORD」这层
+#     映射由 pydantic-settings 在声明处自动完成，要查来源得去 app/config.py 的 seed_password 字段。
+#     换来的是环境变量与 .env 两条通道皆通（旧写法只认环境变量，.env.example 里那行填了也不生效）。
 #   · 故障通过 crud 动作链写入（create→assign→start→submit→confirm…），
 #     让状态机与时间线和线上行为完全一致，不直接改字段；
 #   · 只"加"不做删表/清库等破坏性操作（遵循规则 2.6 / 2.7）。
 
-import os
+# import os  # 旧写法（下方 seed_users 里的 os.getenv）所需，按原样保留备查
 from datetime import datetime, timedelta
 
 from app import crud, schemas
+from app.config import settings
 from app.database import SessionLocal, init_models
 from app.models import FaultRole, FaultStatus, User
 
-# 演示账号清单：(username, display_name, role)。密码统一取环境变量 SEED_PASSWORD。
+# 演示账号清单：(username, display_name, role)。密码统一取自 settings.seed_password（SEED_PASSWORD）。
 DEMO_USERS: list[tuple[str, str, FaultRole]] = [
     ("reporter01", "报修人张三", FaultRole.user),
     ("reporter02", "报修人李四", FaultRole.user),
@@ -41,11 +48,17 @@ def seed_users(db) -> dict[str, User]:
     users = {u.username: u for u in crud.list_users(db)}
     missing = [(n, d, r) for n, d, r in DEMO_USERS if n not in users]
     if missing:
-        password = os.getenv("SEED_PASSWORD")
+        # 旧写法（只认环境变量一个通道，读不到 backend/.env，故改用下方 settings.seed_password）：
+        #     password = os.getenv("SEED_PASSWORD")
+        # 现写法不直接查 os.environ：字段名↔环境变量名的映射与两条通道优先级见 app/config.py 的 seed_password 字段。
+        password = settings.seed_password
         if not password:
             raise SystemExit(
-                "[abort] 库中缺少演示账号且未设置环境变量 SEED_PASSWORD（≥6 位）。\n"
-                "        PowerShell 示例：$env:SEED_PASSWORD=\"passw0rd!\"; python seed.py"
+                "[abort] 库中缺少演示账号且未提供 SEED_PASSWORD（≥6 位）。\n"
+                "        两种给法二选一：\n"
+                "          · PowerShell：$env:SEED_PASSWORD=\"passw0rd!\"; python seed.py\n"
+                "          · 或在 backend/.env 里写一行：SEED_PASSWORD=passw0rd!\n"
+                "        两处同时存在时环境变量优先；本脚本不带默认口令。"
             )
         for username, display_name, role in missing:
             user = crud.create_user(db, schemas.UserCreate(

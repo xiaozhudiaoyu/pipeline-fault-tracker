@@ -42,6 +42,14 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = 720  # 12 小时
 
+    # ---- 演示数据播种（仅 seed.py 读取，不参与服务运行）----
+    # 两种给法都支持（pydantic-settings 的标准优先级）：环境变量 SEED_PASSWORD > .env 同名键。
+    # 默认 None = 不给密码，seed 遇到库中缺账号即中止，【绝不内置默认口令】（需求七.4）。
+    # 映射关系：字段名 seed_password 自动对应环境变量 SEED_PASSWORD（case_sensitive 默认 False，
+    # 且 Windows 上 os.environ 本身不区分大小写），故 seed.py 里只写 settings.seed_password、
+    # 看不到 getenv —— 代价是密码来源不在那个文件显眼，本字段就是它的源头。
+    seed_password: str | None = None
+
 
 @lru_cache
 def get_settings() -> Settings:

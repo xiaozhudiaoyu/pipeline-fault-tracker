@@ -65,7 +65,8 @@ uv sync
 # 2. 复制配置示例（按需修改端口、DB 路径）
 Copy-Item .env.example .env
 
-# 3. 初始化数据库（自动建表 + 写入模拟数据）
+# 3. 初始化数据库（自动建表 + 写入演示账号与模拟数据；密码不写死在代码里，取自 SEED_PASSWORD）
+$env:SEED_PASSWORD="你的演示密码"     # ≥6 位；库中演示账号已齐时可省略（也可写进 .env，见下方说明）
 .venv\Scripts\python.exe seed.py
 
 # 4. 启动服务（默认 http://127.0.0.1:8000）
@@ -73,6 +74,8 @@ Copy-Item .env.example .env
 ```
 
 验证：浏览器打开 `http://127.0.0.1:8000/docs`，应看到 Swagger UI 与全部接口。
+
+> **演示账号（需求八.3）**：`seed.py` 写入 5 个测试账号 —— `reporter01`/`reporter02`（普通用户）、`handler01`/`handler02`（处理人员）、`admin01`（管理员），密码统一为上面设置的 `SEED_PASSWORD`（入库为 bcrypt 哈希，不存明文）。脚本幂等：按用户名逐个补齐，重复执行不会重复插号，也不会重置已有密码；同时写入 3 条流水线与覆盖四种状态的 5 条演示故障（库中已有流水线则跳过数据播种）。`SEED_PASSWORD` 有两种给法：环境变量（上方写法，不落盘）或写进 `backend/.env`（同名键），两处同时存在时环境变量优先。仅当库中缺少账号时才需要它，两种给法都没提供则直接中止并提示，不会用默认密码建号。
 
 ## 五、前端安装与启动
 
@@ -163,7 +166,8 @@ uv sync                                   # 装依赖（.venv 不存在时自动
 Copy-Item .env.example .env               # 配置模板（默认 DATABASE_URL=sqlite:///./fault_tracker.db）
 # 确保目标库文件不存在（或是全新空文件）；若已有一份旧库想保留，走 10.2
 .venv\Scripts\python.exe -m alembic upgrade head   # 空库从零建到最新结构（含 priority 列）
-.venv\Scripts\python.exe seed.py                    # （可选）写入模拟数据
+$env:SEED_PASSWORD="你的演示密码"                   # 演示账号初始密码（≥6 位，也可写进 .env，见第四节说明）
+.venv\Scripts\python.exe seed.py                    # （可选）写入演示账号与模拟数据
 ```
 
 `upgrade head` 会依次跑完基线 + 索引 + priority 三个迁移，空库一次到位；此时库内已有 `alembic_version=b3e19c4d7a52`。

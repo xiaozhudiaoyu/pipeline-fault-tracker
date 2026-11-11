@@ -47,6 +47,8 @@ input:-webkit-autofill:focus {
    弹窗 teleport 到 body、组件 scoped 触达不到，故与上方自动填充补丁同理放全局，
    一处覆盖全站所有对话框（新建账号 / 重置密码 / 动作面板各弹窗），保持圆角一致。 */
 .el-dialog {
-  border-radius: 8px;
   border-radius: 6px;
+}
+.el-tag {
+  font-weight: 600;
 }

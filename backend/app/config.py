@@ -50,6 +50,16 @@ class Settings(BaseSettings):
     # 看不到 getenv —— 代价是密码来源不在那个文件显眼，本字段就是它的源头。
     seed_password: str | None = None
 
+    # ---- 初始管理员（仅 create_admin.py 读取，不参与服务运行）----
+    # 需求七.4：提供创建初始管理员的方法，账号密码可配置，且不把真实密码写死在代码/镜像里。
+    # 取值通道与 seed_password 完全一致（环境变量 > backend/.env，pydantic-settings 自动映射）：
+    #   ADMIN_USERNAME / ADMIN_PASSWORD / ADMIN_DISPLAY_NAME。
+    # username、display_name 有合理默认（非敏感）；password 默认 None = 不给就不建，
+    # create_admin.py 缺密码即中止，【绝不内置默认口令】。已存在同名账号则跳过、不重置密码（幂等）。
+    admin_username: str = "admin"
+    admin_password: str | None = None
+    admin_display_name: str = "系统管理员"
+
 
 @lru_cache
 def get_settings() -> Settings:

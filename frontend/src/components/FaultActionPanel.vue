@@ -12,20 +12,26 @@
 //                   负责人本人任何情形不可自行确认（SM12，后端 403 兜底）
 //   退回 return   ：创建人，待确认（admin 也不能代退回，保守同后端）
 //   优先级 priority：admin 或创建人，done 之前
+//   修改基础信息 edit：admin 或创建人，仅 pending（镜像 crud.update_fault，只改 location/symptom，
+//                   原 FaultEditPanel 内嵌面板随本次改造并入动作对话框）
 //
 // 防重复点击（需求四.5）：任一动作提交中禁用全部按钮；对话框动作确定按钮同口径 loading。
 import { computed, reactive, ref } from 'vue'
+import { ElMessage } from 'element-plus'
 
-import { useFaultActions } from '../composables/useFaultMutations'
+import { useFaultActions, useFaultMutations } from '../composables/useFaultMutations'
 import { useUsers } from '../composables/useUsers'
 import { isAdmin, currentUser } from '../composables/useAuth'
 import { progressNoteSchema, reasonSchema, resultNoteSchema } from '../schemas/auth'
+import { faultUpdateSchema } from '../schemas/fault'
 import { FAULT_PRIORITY_OPTIONS, FAULT_STATUS_META } from '../types/fault'
-import type { Fault, FaultPriority } from '../types/fault'
+import type { Fault, FaultPriority, FaultUpdatePayload } from '../types/fault'
 
 const props = defineProps<{ fault: Fault }>()
 
 const actions = useFaultActions()
+// 修改基础信息走 PATCH /api/faults/{id}（非闭环动作，useFaultMutations.update：成功写回详情缓存）。
+const { update } = useFaultMutations()
 
 // 用户表仅 admin 拉（/api/users 后端限管理员）：指派/改派候选 + 代确认前查创建人是否停用
 const { data: users } = useUsers(isAdmin)
@@ -64,6 +70,8 @@ const canConfirmByAdmin = computed(
 )
 const canReturn = computed(() => s.value === 'awaiting_confirmation' && isCreator.value)
 const canPriority = computed(() => (isAdmin.value || isCreator.value) && s.value !== 'done')
+// 修改基础信息（镜像 crud.update_fault）：仅 pending 且（创建人本人 或 admin）
+const canEdit = computed(() => s.value === 'pending' && (isAdmin.value || isCreator.value))
 
 // 终态与「与我无关」两种空态文案
 const isDone = computed(() => s.value === 'done')
@@ -71,7 +79,7 @@ const hasAnyAction = computed(
   () =>
     canAssign.value || canReassign.value || canStart.value || canProgress.value ||
     canSubmit.value || canConfirmByCreator.value || canConfirmByAdmin.value ||
-    canReturn.value || canPriority.value
+    canReturn.value || canPriority.value || canEdit.value
 )
 
 // 当前卡在谁手里（需求四.5"知道当前等待谁操作"）
@@ -90,10 +98,13 @@ const waitingHint = computed(() => {
 })
 
 // ── 提交中禁全部按钮（需求四.5 防重复点击）───────────────────────────
-const anyLoading = computed(() => Object.values(actions).some((m) => m.isLoading.value))
+// update（修改基础信息）与闭环动作并列，任一提交中同样禁全部按钮。
+const anyLoading = computed(
+  () => Object.values(actions).some((m) => m.isLoading.value) || update.isLoading.value,
+)
 
 // ── 需要输入的动作统一走一个对话框 ────────────────────────────────────
-type DialogName = 'assign' | 'reassign' | 'progress' | 'submit' | 'confirm' | 'return' | 'priority'
+type DialogName = 'assign' | 'reassign' | 'progress' | 'submit' | 'confirm' | 'return' | 'priority' | 'edit'
 
 const dialogName = ref<DialogName | null>(null)
 // el-dialog 的 v-model 需要 boolean：用可写 computed 代理（关闭时只认 false，避免把 boolean 写回 DialogName）
@@ -104,11 +115,19 @@ const dialogVisible = computed({
   },
 })
 const dialogError = ref('')
-const dialogForm = reactive<{ assigneeId: number | undefined; text: string; priority: FaultPriority }>({
+const dialogForm = reactive<{ assigneeId: number | undefined; text: string; priority: FaultPriority; location: string; symptom: string }>({
   assigneeId: undefined,
   text: '',
   priority: 'normal',
+  location: '',
+  symptom: '',
 })
+// 修改基础信息的字段级报错（Zod issues 按字段归并，同原 FaultEditPanel 口径）
+const fieldErrors = reactive<Record<string, string>>({})
+
+function clearFieldErrors() {
+  for (const key of Object.keys(fieldErrors)) delete fieldErrors[key]
+}
 
 const DIALOG_TITLES: Record<DialogName, string> = {
   assign: '指派负责人',
@@ -118,6 +137,7 @@ const DIALOG_TITLES: Record<DialogName, string> = {
   confirm: '代确认完成',
   return: '退回处理',
   priority: '调整优先级',
+  edit: '修改基础信息',
 }
 const dialogTitle = computed(() => (dialogName.value ? DIALOG_TITLES[dialogName.value] : ''))
 const showAssigneeSelect = computed(() => dialogName.value === 'assign' || dialogName.value === 'reassign')
@@ -141,9 +161,15 @@ const handlerOptions = computed(() =>
 function openDialog(name: DialogName) {
   dialogName.value = name
   dialogError.value = ''
+  clearFieldErrors()
   dialogForm.assigneeId = undefined
   dialogForm.text = ''
   dialogForm.priority = props.fault.priority
+  // 修改基础信息：预填当前值（同原 FaultEditPanel 的 startEdit）
+  if (name === 'edit') {
+    dialogForm.location = props.fault.location
+    dialogForm.symptom = props.fault.symptom
+  }
 }
 
 function closeDialog() {
@@ -187,6 +213,32 @@ function onDialogConfirm() {
     }
   }
 
+  // 修改基础信息：Zod 校验 → 只发改动过的字段（后端 exclude_unset 只应用传来的键，
+  // 避免无谓 bump updated_at）→ 无改动不发请求直接关框（同原 FaultEditPanel.onSubmit）。
+  if (name === 'edit') {
+    clearFieldErrors()
+    const r = faultUpdateSchema.safeParse({ location: dialogForm.location, symptom: dialogForm.symptom })
+    if (!r.success) {
+      for (const issue of r.error.issues) {
+        const key = String(issue.path[0] ?? 'form')
+        if (!fieldErrors[key]) fieldErrors[key] = issue.message
+      }
+      return
+    }
+    const payload: FaultUpdatePayload = {}
+    const loc = dialogForm.location.trim()
+    if (loc !== props.fault.location) payload.location = loc
+    const sym = dialogForm.symptom.trim()
+    if (sym !== props.fault.symptom) payload.symptom = sym
+    if (Object.keys(payload).length === 0) {
+      closeDialog()
+      ElMessage.info('没有需要保存的改动')
+      return
+    }
+    update.mutate({ id: props.fault.id, payload }, { onSuccess: () => closeDialog() })
+    return
+  }
+
   const id = props.fault.id
   const done = () => closeDialog()
   if (name === 'assign') actions.assign.mutate({ id, assigneeId: assigneeId! }, { onSuccess: done })
@@ -218,6 +270,7 @@ const dialogLoading = computed(() => {
     confirm: actions.confirm,
     return: actions.return,
     priority: actions.priority,
+    edit: update,
   }
   return map[name].isLoading.value
 })
@@ -258,6 +311,7 @@ const dialogLoading = computed(() => {
         退回处理
       </el-button>
       <el-button v-if="canPriority" :disabled="anyLoading" @click="openDialog('priority')">调整优先级</el-button>
+      <el-button v-if="canEdit" :disabled="anyLoading" @click="openDialog('edit')">修改基础信息</el-button>
     </div>
 
     <el-alert
@@ -303,6 +357,30 @@ const dialogLoading = computed(() => {
             </el-radio>
           </el-radio-group>
         </el-form-item>
+
+        <!-- 修改基础信息：字段与原 FaultEditPanel 一致，仅开放 location / symptom -->
+        <template v-if="dialogName === 'edit'">
+          <el-form-item label="故障位置" required :error="fieldErrors.location">
+            <el-input
+              v-model="dialogForm.location"
+              placeholder="如：3 号工位传送带"
+              maxlength="200"
+              show-word-limit
+              class="dialog-control"
+            />
+          </el-form-item>
+          <el-form-item label="故障现象" required :error="fieldErrors.symptom">
+            <el-input
+              v-model="dialogForm.symptom"
+              type="textarea"
+              :rows="3"
+              placeholder="请描述故障现象（至少 5 个字）"
+              maxlength="1000"
+              show-word-limit
+              class="dialog-control"
+            />
+          </el-form-item>
+        </template>
       </el-form>
 
       <template #footer>
@@ -337,7 +415,10 @@ const dialogLoading = computed(() => {
 .action-buttons {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px;
+  gap: 8px;
+  .el-button+.el-button {
+    margin-left: 0;
+  }
 }
 .dialog-control {
   width: 100%;

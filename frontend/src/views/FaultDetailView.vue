@@ -9,7 +9,8 @@ import StatusTag from '../components/StatusTag.vue'
 import PriorityTag from '../components/PriorityTag.vue'
 import FaultActionPanel from '../components/FaultActionPanel.vue'
 import FaultTimelineList from '../components/FaultTimelineList.vue'
-import FaultEditPanel from '../components/FaultEditPanel.vue'
+// 修改基础信息已并入 FaultActionPanel 的动作对话框，内嵌面板不再挂载（组件文件暂保留）
+// import FaultEditPanel from '../components/FaultEditPanel.vue'
 import { useFaultDetail } from '../composables/useFaultDetail'
 import { formatDateTime } from '../utils/format'
 
@@ -93,7 +94,8 @@ onBeforeUnmount(() => compactMql?.removeEventListener('change', syncCompact))
             <el-descriptions-item label="完成时间" :span="2">{{ formatDateTime(fault.closed_at) }}</el-descriptions-item>
           </el-descriptions>
 
-          <FaultEditPanel :fault="fault" />
+          <!-- 修改基础信息入口已移至右栏「处理操作」面板（原内嵌面板，保留备查） -->
+          <!-- <FaultEditPanel :fault="fault" /> -->
           <FaultTimelineList :fault-id="faultId" />
         </div>
 

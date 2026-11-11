@@ -26,6 +26,8 @@ export interface TimelineEntry {
   to_status: FaultStatus | null
   from_assignee_id: number | null
   to_assignee_id: number | null
+  from_assignee_name: string | null // 变更前负责人显示名（账号已删为 null，展示层占位）
+  to_assignee_name: string | null // 变更后（被指派）负责人显示名
   note: string | null
   is_imported: boolean // true = 升级时从旧 handling_note 导入的"历史数据"
   created_at: string // ISO 8601

@@ -36,6 +36,11 @@ function statusLabel(value: string | null): string {
 function operatorLabel(entry: TimelineEntry): string {
   return entry.operator_name || '历史数据/未关联账号'
 }
+
+// 被指派负责人显示：assignee 无姓名快照，账号已删（null）时占位「已注销账号」
+function assigneeLabel(name: string | null): string {
+  return name || '已注销账号'
+}
 </script>
 
 <template>
@@ -68,6 +73,14 @@ function operatorLabel(entry: TimelineEntry): string {
         <!-- 状态变化：from → to（指派/进展/优先级等不改状态的动作两端相同或为空，不渲染） -->
         <p v-if="entry.from_status !== entry.to_status" class="entry-flow">
           {{ statusLabel(entry.from_status) }} → {{ statusLabel(entry.to_status) }}
+        </p>
+
+        <!-- 指派/改派人员（需求：处理记录显示指派的人员）；assign 只展示新负责人，reassign 展示旧 → 新 -->
+        <p v-if="entry.action === 'assign'" class="entry-flow">
+          指派给：{{ assigneeLabel(entry.to_assignee_name) }}
+        </p>
+        <p v-else-if="entry.action === 'reassign'" class="entry-flow">
+          改派：{{ assigneeLabel(entry.from_assignee_name) }} → {{ assigneeLabel(entry.to_assignee_name) }}
         </p>
 
         <p v-if="entry.note" class="entry-note">{{ entry.note }}</p>

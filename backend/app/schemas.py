@@ -476,6 +476,8 @@ class TimelineOut(BaseModel):
     to_status: str | None
     from_assignee_id: int | None
     to_assignee_id: int | None
+    from_assignee_name: str | None = None
+    to_assignee_name: str | None = None
     note: str | None
     is_imported: bool
     created_at: datetime

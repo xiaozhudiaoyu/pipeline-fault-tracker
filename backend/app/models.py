@@ -475,10 +475,35 @@ class FaultTimeline(Base):
         lazy="selectin",
     )
 
+    # 负责人变更前后对象：TimelineOut.from/to_assignee_name 经 from_attributes 读下方同名 property。
+    # lazy="selectin" 同 operator，批量加载时间线时一次 IN 查 users，避免 N+1。
+    # 无姓名快照列（不同于 operator）：账号被删 → FK SET NULL → relationship 为空 → 姓名回退由展示层处理。
+    from_assignee: Mapped["User | None"] = relationship(
+        "User",
+        foreign_keys=[from_assignee_id],
+        lazy="selectin",
+    )
+
+    to_assignee: Mapped["User | None"] = relationship(
+        "User",
+        foreign_keys=[to_assignee_id],
+        lazy="selectin",
+    )
+
     @property
     def operator_name(self) -> str | None:
         """操作人显示名：优先当前用户 display_name，账号已删（SET NULL）时回退写入时快照。"""
         return self.operator.display_name if self.operator is not None else self.operator_name_snapshot
+
+    @property
+    def from_assignee_name(self) -> str | None:
+        """变更前负责人显示名：账号已删（SET NULL）时无快照可回退，返回 None 交展示层占位。"""
+        return self.from_assignee.display_name if self.from_assignee is not None else None
+
+    @property
+    def to_assignee_name(self) -> str | None:
+        """变更后负责人显示名：账号已删（SET NULL）时无快照可回退，返回 None 交展示层占位。"""
+        return self.to_assignee.display_name if self.to_assignee is not None else None
 
     def __repr__(self) -> str:
         return (

@@ -8,7 +8,7 @@
 #   GET    /api/faults/export         导出 CSV（复用列表口径，不分页，流式响应）
 #   POST   /api/faults                故障登记（created_by 从当前用户取）
 #   GET    /api/faults/{id}           单条详情（can_view 检查）
-#   PATCH  /api/faults/{id}           修改基础信息（pending + 创建人或 admin）
+#   PATCH  /api/faults/{id}           修改故障信息（pending + 创建人或 admin）
 #   GET    /api/faults/{id}/timelines 时间线（同 can_view）
 #   POST   /api/faults/{id}/assign    指派（admin）
 #   POST   /api/faults/{id}/reassign  改派（admin，理由必填）

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// 修改基础信息面板（第三阶段收窄）：默认只读，点「编辑」展开表单（预填当前值）→ 保存/取消。
+// 修改故障信息面板（第三阶段收窄）：默认只读，点「编辑」展开表单（预填当前值）→ 保存/取消。
 // 可改字段仅剩 location / symptom：后端 crud.update_fault 只应用这两个键，
 // priority 改走动作面板「调整优先级」（需时间线记录），handling_note 由「提交处理结果」写入。
 // 可见性镜像后端门槛：仅 pending 且（创建人本人 或 admin），其余情况整块不渲染（后端仍是最终裁判）。
@@ -100,7 +100,7 @@ function onSubmit() {
 
 <template>
   <div v-if="canEdit" class="edit-panel">
-    <h3 class="panel-title">修改基础信息</h3>
+    <h3 class="panel-title">修改故障信息</h3>
 
     <el-button v-if="!editing" type="primary" plain @click="startEdit">编辑</el-button>
 

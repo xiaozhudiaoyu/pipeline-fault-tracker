@@ -41,7 +41,7 @@ export function toUserMessage(err: unknown): string {
   return '操作失败，请稍后重试'
 }
 
-// 修改基础信息需要 id + payload。
+// 修改故障信息需要 id + payload。
 export interface UpdateVariables {
   id: number
   payload: FaultUpdatePayload
@@ -62,7 +62,7 @@ export function useFaultMutations() {
     },
   })
 
-  // 修改基础信息：成功后写回详情缓存 + 列表失效（location/symptom 列可能变化）。
+  // 修改故障信息：成功后写回详情缓存 + 列表失效（location/symptom 列可能变化）。
   const update = useMutation<Fault, Error, UpdateVariables>({
     mutationFn: ({ id, payload }) => updateFault(id, payload),
     onSuccess: (fault) => {

@@ -35,7 +35,7 @@ export type FaultCreateInput = z.infer<typeof faultCreateSchema>
 // （第三阶段 D5）旧 faultTransitionSchema 已随 /transition 端点与 StatusTransitionPanel 一并废除，
 // 各动作的文本输入校验见 schemas/auth.ts（progressNoteSchema 等）。
 
-// 修改基础信息校验（第三阶段收窄，对应后端 crud.update_fault 只应用 location / symptom）。
+// 修改故障信息校验（第三阶段收窄，对应后端 crud.update_fault 只应用 location / symptom）。
 // handling_note / priority 已从 PATCH 通道关闭，表单不再渲染这两个字段。
 export const faultUpdateSchema = z.object({
   location: z

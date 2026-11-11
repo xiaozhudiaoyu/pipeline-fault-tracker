@@ -29,7 +29,7 @@ export function createFault(payload: FaultCreatePayload): Promise<Fault> {
   return request<Fault>('/api/faults', { method: 'POST', body: payload })
 }
 
-// PATCH /api/faults/{id} —— 修改基础信息（仅 pending 且创建人/admin；其余 403/409/422 由后端裁决）。
+// PATCH /api/faults/{id} —— 修改故障信息（仅 pending 且创建人/admin；其余 403/409/422 由后端裁决）。
 export function updateFault(id: number, payload: FaultUpdatePayload): Promise<Fault> {
   return request<Fault>(`/api/faults/${id}`, { method: 'PATCH', body: payload })
 }

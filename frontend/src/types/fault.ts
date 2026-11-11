@@ -98,7 +98,7 @@ export const FAULT_STATUS_META: Record<
   done: { label: '已完成', tag: 'success' },
 }
 
-// 状态筛选选项（顺序固定：按处理流程推进方向 待处理 → 处理中 → 待确认 → 已完成）
+// 状态筛选选项（顺序固定：按处理进度推进方向 待处理 → 处理中 → 待确认 → 已完成）
 export const FAULT_STATUS_OPTIONS: { value: FaultStatus; label: string }[] = [
   { value: 'pending', label: FAULT_STATUS_META.pending.label },
   { value: 'processing', label: FAULT_STATUS_META.processing.label },

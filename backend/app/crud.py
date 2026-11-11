@@ -280,7 +280,7 @@ def create_fault(db: Session, data: schemas.FaultCreate, *, creator: User) -> Pi
 def update_fault(
     db: Session, fault_id: int, data: schemas.FaultUpdate, *, viewer: User
 ) -> PipelineFault:
-    """修改基础信息（第三阶段）：pending + (创建人本人 或 admin)，只落 location / symptom。
+    """修改故障信息（第三阶段）：pending + (创建人本人 或 admin)，只落 location / symptom。
 
     与旧实现的差异：
       · priority 走 POST /{id}/priority 端点（需时间线记录）；

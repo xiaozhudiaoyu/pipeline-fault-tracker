@@ -68,7 +68,7 @@ const dropdownPopperOptions: Partial<Options> = {
         </el-dropdown>
       </div>
     </el-header>
-    <el-main class="app-main">
+    <el-main class="app-main scrollbar-hover-show">
       <RouterView />
     </el-main>
   </el-container>

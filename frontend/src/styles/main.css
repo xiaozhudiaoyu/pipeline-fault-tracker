@@ -52,3 +52,39 @@ input:-webkit-autofill:focus {
 .el-tag {
   font-weight: 600;
 }
+
+/* 全局滚动条工具类：悬停显隐（原 FaultTimelineList .timeline-horizontal scoped 整段搬入，方案 A 全局化）。
+   规则本身不依赖 scoped 哈希属性（::-webkit-scrollbar 伪元素本来就不带 data-v），原样搬即可生效；
+   配色跟列表页表格对齐：el-table 内部走 el-scrollbar，theme-chalk 里 .el-scrollbar__thumb 的底色取
+   --el-scrollbar-bg-color（本版本 2.5.6 实际解析为 --el-text-color-secondary = #909399），
+   静置透明度 --el-scrollbar-opacity 0.3、滑块自身 hover 升到 --el-scrollbar-hover-opacity 0.5，
+   这里照抄同一支色与两档透明度（而不是自己再选一个“看着差不多”的灰）。
+   Chrome/Edge 走 ::-webkit-scrollbar-thumb；Firefox 只认 scrollbar-color（没有透明度维度，
+   所以 30% 直接写进颜色里，也拿不到“滑块 hover 加深”这一态）；webkit 伪元素上的 transition 不可靠，不写。
+   尾那条 ::-webkit-scrollbar-thumb:hover 必须排在容器 :hover 之后：两条特异度相同，靠源码顺序定胜负。
+   注意：本类只负责滚动条显隐与配色，横向滚动的 overflow-x: auto 仍归容器自身样式，需另行具备。 */
+.scrollbar-hover-show {
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+}
+.scrollbar-hover-show:hover {
+  scrollbar-color: rgb(144 147 153 / 30%) transparent;
+}
+/* 滚动条只在鼠标移入记录区时显形：槽位常驻 8px（不会因为显隐把布局顶得跳动），平时把滑块藏成透明。 */
+.scrollbar-hover-show::-webkit-scrollbar {
+  height: 8px;
+}
+.scrollbar-hover-show::-webkit-scrollbar-track {
+  background: transparent;
+}
+.scrollbar-hover-show::-webkit-scrollbar-thumb {
+  border-radius: 4px;
+  background-color: var(--el-text-color-secondary, #909399);
+  opacity: 0;
+}
+.scrollbar-hover-show:hover::-webkit-scrollbar-thumb {
+  opacity: var(--el-scrollbar-opacity, 0.3);
+}
+.scrollbar-hover-show::-webkit-scrollbar-thumb:hover {
+  opacity: var(--el-scrollbar-hover-opacity, 0.5);
+}

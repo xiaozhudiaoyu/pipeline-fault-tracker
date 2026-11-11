@@ -15,6 +15,10 @@ export type TimelineAction =
   | 'return'
   | 'priority_change'
 
+// 处理记录排布方向（FaultTimelineList 与 FaultDetailView 共用）：
+// 状态由父视图持有——横向时逃逸出来的记录会伸到右栏下方，父视图需要同一值禁用右栏吸顶。
+export type TimelineOrientation = 'vertical' | 'horizontal'
+
 // 时间线一条记录（后端 TimelineOut）
 export interface TimelineEntry {
   id: number

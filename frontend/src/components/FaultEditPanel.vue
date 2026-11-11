@@ -8,7 +8,7 @@ import { ElMessage } from 'element-plus'
 
 import { useFaultMutations } from '../composables/useFaultMutations'
 import { currentUser, isAdmin } from '../composables/useAuth'
-import { faultUpdateSchema } from '../schemas/fault'
+import { faultUpdateSchema, FAULT_TEXT_LIMITS } from '../schemas/fault'
 import type { Fault, FaultUpdatePayload } from '../types/fault'
 
 const props = defineProps<{ fault: Fault }>()
@@ -109,7 +109,7 @@ function onSubmit() {
         <el-input
           v-model="form.location"
           placeholder="如：3 号工位传送带"
-          maxlength="200"
+          :maxlength="FAULT_TEXT_LIMITS.location"
           show-word-limit
           class="control"
         />
@@ -121,7 +121,7 @@ function onSubmit() {
           type="textarea"
           :rows="3"
           placeholder="请描述故障现象（至少 5 个字）"
-          maxlength="1000"
+          :maxlength="FAULT_TEXT_LIMITS.symptom"
           show-word-limit
           class="control-wide"
         />

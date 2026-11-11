@@ -7,7 +7,7 @@ import { Back } from '@element-plus/icons-vue'
 
 import { useFaultMutations } from '../composables/useFaultMutations'
 import { usePipelines } from '../composables/usePipelines'
-import { faultCreateSchema } from '../schemas/fault'
+import { faultCreateSchema, FAULT_TEXT_LIMITS } from '../schemas/fault'
 import { FAULT_PRIORITY_OPTIONS } from '../types/fault'
 import type { FaultCreatePayload, FaultPriority } from '../types/fault'
 
@@ -97,7 +97,7 @@ function onReset() {
         <el-input
           v-model="form.location"
           placeholder="如：3 号工位传送带"
-          maxlength="200"
+          :maxlength="FAULT_TEXT_LIMITS.location"
           show-word-limit
           class="form-control"
         />
@@ -119,7 +119,7 @@ function onReset() {
           type="textarea"
           :rows="4"
           placeholder="请描述故障现象（至少 5 个字）"
-          maxlength="1000"
+          :maxlength="FAULT_TEXT_LIMITS.symptom"
           show-word-limit
           class="form-control"
         />

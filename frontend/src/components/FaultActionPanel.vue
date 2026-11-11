@@ -25,7 +25,7 @@ import { useFaultActions, useFaultMutations } from '../composables/useFaultMutat
 import { useUsers } from '../composables/useUsers'
 import { isAdmin, currentUser } from '../composables/useAuth'
 import { progressNoteSchema, reasonSchema, resultNoteSchema, TEXT_LIMITS } from '../schemas/auth'
-import { faultUpdateSchema } from '../schemas/fault'
+import { faultUpdateSchema, FAULT_TEXT_LIMITS } from '../schemas/fault'
 import { FAULT_PRIORITY_OPTIONS, FAULT_STATUS_META } from '../types/fault'
 import type { Fault, FaultPriority, FaultUpdatePayload } from '../types/fault'
 
@@ -393,7 +393,7 @@ const dialogLoading = computed(() => {
             <el-input
               v-model="dialogForm.location"
               placeholder="如：3 号工位传送带"
-              maxlength="200"
+              :maxlength="FAULT_TEXT_LIMITS.location"
               show-word-limit
               class="dialog-control"
             />
@@ -404,7 +404,7 @@ const dialogLoading = computed(() => {
               type="textarea"
               :rows="3"
               placeholder="请描述故障现象（至少 5 个字）"
-              maxlength="1000"
+              :maxlength="FAULT_TEXT_LIMITS.symptom"
               show-word-limit
               class="dialog-control"
             />

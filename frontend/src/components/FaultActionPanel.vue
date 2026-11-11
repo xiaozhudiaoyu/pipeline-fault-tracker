@@ -20,6 +20,7 @@
 import { computed, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 
+import FaultFlowSteps from './FaultFlowSteps.vue'
 import { useFaultActions, useFaultMutations } from '../composables/useFaultMutations'
 import { useUsers } from '../composables/useUsers'
 import { isAdmin, currentUser } from '../composables/useAuth'
@@ -303,7 +304,10 @@ const dialogLoading = computed(() => {
 
 <template>
   <div class="action-panel">
-    <h3 class="panel-title">处理操作</h3>
+    <!-- <h3 class="panel-title">处理操作</h3> -->
+
+    <!-- 处理进度步骤条（用户指定置于本面板标题下方；组件自带底部分隔线） -->
+    <FaultFlowSteps :fault="fault" />
 
     <!-- 当前环节提示：让用户知道流程卡在哪、等待谁（需求四.5） -->
     <p class="waiting-hint">
@@ -435,7 +439,7 @@ const dialogLoading = computed(() => {
 }
 .waiting-text {
   color: var(--el-text-color-secondary, #909399);
-  font-size: 13px;
+  font-size: 14px;
 }
 .action-buttons {
   display: flex;

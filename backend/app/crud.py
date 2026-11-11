@@ -316,7 +316,12 @@ def assign_fault(db: Session, fault_id: int, assignee_id: int, *, actor: User) -
     check_can_assign(actor, fault)
     assignee = _load_handler(db, assignee_id)
     from_id = fault.assignee_id
-    fault.assignee_id = assignee.id
+    # 赋关系对象而非只写外键列 fault.assignee_id：本函数开头 get_fault 已用 selectinload
+    # 把 assignee 关系加载为 None，SessionLocal 又是 expire_on_commit=False，commit 后属性
+    # 不过期，末尾再 get_fault 命中 identity map 时 eager loader 不会覆盖这个「已加载」的
+    # 关系 → 响应体会回 null 负责人（BUG-C，见 tests::TestAssignResponseAssignee）。
+    # 走关系赋值同时同步 assignee_id 与关系本身，一次写入两条路径都对。
+    fault.assignee = assignee
     _write_timeline(
         db, fault, TimelineAction.assign, actor,
         from_status=fault.status.value, to_status=fault.status.value,
@@ -334,7 +339,8 @@ def reassign_fault(
     check_can_reassign(actor, fault)
     assignee = _load_handler(db, assignee_id)
     from_id = fault.assignee_id
-    fault.assignee_id = assignee.id
+    # 同 assign_fault：赋关系对象，避免末尾重取时旧 assignee 关系不被覆盖（BUG-C）。
+    fault.assignee = assignee
     _write_timeline(
         db, fault, TimelineAction.reassign, actor,
         from_status=fault.status.value, to_status=fault.status.value,

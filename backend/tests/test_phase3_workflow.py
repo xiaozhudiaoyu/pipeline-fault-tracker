@@ -727,3 +727,82 @@ class TestTimelineOperatorAndClock:
             f"时间线 created_at={timeline_ts} 与本地时间 {now} 相差超 5 分钟（疑似 UTC 口径）"
         )
 
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 第八部分：指派/改派响应体缺陷（BUG-C）
+#   BUG-C assignee 陈旧：crud.assign_fault / reassign_fault 用 `fault.assignee_id = ...`
+#     只写外键列，而同 Session 内该实例的 assignee 关系已被开头 get_fault 的 selectinload
+#     加载过（值 NULL 也算已加载）；SessionLocal 又是 expire_on_commit=False，commit 后
+#     属性不过期，末尾再 get_fault 命中 identity map 返回同一实例，eager loader 默认不
+#     覆盖已加载的关系属性（要覆盖需 populate_existing）——于是库里写对了，响应体却返回
+#     assignee=null（改派场景是旧负责人）。
+#   现象：前端详情动作成功后只 setQueryData(响应) 写回、不补发 GET（见 useFaultMutations
+#     的 useActionBase），故指派后「负责人」原地不动，F5 刷新才显示。
+#   既有 SM1/SM13 只断言状态与外键，未看响应体，缺陷漏网 → 本组走完整 HTTP 链补盖。
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+class TestAssignResponseAssignee:
+    """BUG-C：指派/改派动作的响应体必须带回新负责人（它是前端详情缓存的唯一数据源）。"""
+
+    @staticmethod
+    async def _seed_fault(client) -> int:
+        """造一条 pending 且未指派的故障（client 默认身份 admin），返回故障 id。"""
+        p = await client.post("/api/pipelines", json={"code": "ASSIGNRES", "name": "响应体验证线"})
+        assert p.status_code == 201
+        f = await client.post(
+            "/api/faults",
+            json={
+                "pipeline_id": p.json()["id"],
+                "location": "8号工位",
+                "occurred_at": (datetime.now() - timedelta(hours=1)).isoformat(),
+                "symptom": "指派响应体负责人验证",
+            },
+        )
+        assert f.status_code == 201
+        return f.json()["id"]
+
+    @pytest.mark.anyio
+    async def test_bug_c_assign_response_contains_assignee(self, client, handler_user):
+        """BUG-C-1：POST /assign 响应体的 assignee 应是刚指派的处理员（修复前为 null → 红）。"""
+        fid = await self._seed_fault(client)
+
+        resp = await client.post(f"/api/faults/{fid}/assign", json={"assignee_id": handler_user.id})
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["assignee"] is not None, "指派响应体未带负责人，前端详情会被写成「未指派」"
+        assert body["assignee"]["id"] == handler_user.id
+        assert body["assignee"]["username"] == handler_user.username
+
+        # 库里一直是对的：详情接口二次读取给出同一个负责人（用于区分「写库失败」与「响应陈旧」）
+        detail = await client.get(f"/api/faults/{fid}")
+        assert detail.json()["assignee"]["id"] == handler_user.id
+
+    @pytest.mark.anyio
+    async def test_bug_c_reassign_response_contains_new_assignee(
+        self, client, handler_user, db_session: Session
+    ):
+        """BUG-C-2：改派响应体的 assignee 应是新负责人，不能留任旧负责人（修复前红）。"""
+        from app import crud, schemas
+        from app.models import FaultRole
+
+        second = crud.create_user(
+            db_session,
+            schemas.UserCreate(
+                username="reassign-target", password="pass123",
+                display_name="接手处理员", role=FaultRole.handler,
+            ),
+        )
+        fid = await self._seed_fault(client)
+        first = await client.post(f"/api/faults/{fid}/assign", json={"assignee_id": handler_user.id})
+        assert first.status_code == 200
+
+        resp = await client.post(
+            f"/api/faults/{fid}/reassign",
+            json={"assignee_id": second.id, "reason": "原处理员当班调整"},
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["assignee"] is not None, "改派响应体未带负责人"
+        assert body["assignee"]["id"] == second.id, "改派响应体仍返回旧负责人"
+

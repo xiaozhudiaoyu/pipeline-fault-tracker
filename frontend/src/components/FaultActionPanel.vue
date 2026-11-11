@@ -3,7 +3,8 @@
 // 废除旧「下拉选目标状态再推进」交互（旧 StatusTransitionPanel 随 D5 一并移除）。
 //
 // 显隐矩阵镜像后端 app/auth.py 的 check_can_*（后端是最终裁判，这里只做体验层过滤）：
-//   指派 assign   ：admin，pending 且无负责人
+//   指派 assign   ：admin，pending/processing 且无负责人（processing 分支专为旧库升级来、
+//                   负责人为 NULL 的遗留数据开口子，对齐后端 check_can_assign——它只挡 done/待确认）
 //   改派 reassign ：admin，pending/processing 且已有负责人（D6：待确认不可改派）
 //   开始 start    ：当前负责人，pending
 //   进展 progress ：当前负责人，processing（可多次）
@@ -50,7 +51,12 @@ const creatorUsable = computed(() => {
 
 // ── 动作显隐矩阵（状态 × 角色 × 归属）────────────────────────────────
 const s = computed(() => props.fault.status)
-const canAssign = computed(() => isAdmin.value && s.value === 'pending' && !props.fault.assignee)
+// 指派（对齐 check_can_assign）：admin 且无负责人即可指派，不限 pending——processing 但负责人
+// 为 NULL 的历史遗留数据也需要能被接手（后端本就放行，assign_fault 不改状态只挂负责人）。
+// done/awaiting 后端会拒（assign 与改派语义分离：已有负责人应走 reassign）。
+const canAssign = computed(
+  () => isAdmin.value && (s.value === 'pending' || s.value === 'processing') && !props.fault.assignee
+)
 const canReassign = computed(
   () => isAdmin.value && (s.value === 'pending' || s.value === 'processing') && !!props.fault.assignee
 )
@@ -88,7 +94,11 @@ const waitingHint = computed(() => {
   if (f.status === 'pending') {
     return f.assignee ? `已分派给 ${f.assignee.display_name}，等待其开始处理` : '尚未指派负责人，等待管理员分派'
   }
-  if (f.status === 'processing') return `处理中，当前由 ${f.assignee?.display_name ?? '—'} 跟进`
+  if (f.status === 'processing') {
+    return f.assignee
+      ? `处理中，当前由 ${f.assignee.display_name} 跟进`
+      : '处理中，但负责人缺失（历史遗留数据），等待管理员指派接手'
+  }
   if (f.status === 'awaiting_confirmation') {
     return creatorUsable.value
       ? `等待创建人 ${f.created_by?.display_name ?? '（历史数据）'} 确认或退回`

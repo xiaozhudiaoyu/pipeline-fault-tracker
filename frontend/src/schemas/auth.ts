@@ -9,26 +9,36 @@ export const loginSchema = z.object({
 })
 export type LoginInput = z.infer<typeof loginSchema>
 
+// 闭环动作文本字段的上限单一来源（逐条对照后端 backend/app/schemas.py：
+// progress.note / submit.result_note = 2000，reassign.reason / return.reason / confirm.reason = 500）。
+// 为何抽出来：对话框的 maxlength 与下方 zod 的 .max() 必须同一个数，
+// 两处各写一遍数字已踩过坑（显示计数到 2000 才拦，但理由实际只允许 500 字）。
+export const TEXT_LIMITS = {
+  progressNote: 2000,
+  resultNote: 2000,
+  reason: 500,
+} as const
+
 // 进展说明（后端 FaultProgressIn.note：strip 后 ≥2，≤2000）
 export const progressNoteSchema = z
   .string({ required_error: '请填写进展内容' })
   .trim()
   .min(2, '进展内容至少 2 个字')
-  .max(2000, '进展内容最多 2000 字')
+  .max(TEXT_LIMITS.progressNote, `进展内容最多 ${TEXT_LIMITS.progressNote} 字`)
 
 // 处理结果说明（后端 FaultSubmitIn.result_note：strip 后 ≥5，≤2000）
 export const resultNoteSchema = z
   .string({ required_error: '请填写处理结果说明' })
   .trim()
   .min(5, '处理结果说明至少 5 个字')
-  .max(2000, '处理结果说明最多 2000 字')
+  .max(TEXT_LIMITS.resultNote, `处理结果说明最多 ${TEXT_LIMITS.resultNote} 字`)
 
 // 改派/退回/代确认理由（后端 reason：strip 后 ≥2，≤500；代确认 reason 可空由调用方按角色分支控制）
 export const reasonSchema = z
   .string({ required_error: '请填写理由' })
   .trim()
   .min(2, '理由至少 2 个字')
-  .max(500, '理由最多 500 字')
+  .max(TEXT_LIMITS.reason, `理由最多 ${TEXT_LIMITS.reason} 字`)
 
 // 新建账号（后端 UserCreate：username 3~50 唯一，密码 ≥6，display_name 1~100）
 export const userCreateSchema = z.object({

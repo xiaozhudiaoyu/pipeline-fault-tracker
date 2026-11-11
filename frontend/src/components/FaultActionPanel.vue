@@ -22,7 +22,7 @@ import { ElMessage } from 'element-plus'
 import { useFaultActions, useFaultMutations } from '../composables/useFaultMutations'
 import { useUsers } from '../composables/useUsers'
 import { isAdmin, currentUser } from '../composables/useAuth'
-import { progressNoteSchema, reasonSchema, resultNoteSchema } from '../schemas/auth'
+import { progressNoteSchema, reasonSchema, resultNoteSchema, TEXT_LIMITS } from '../schemas/auth'
 import { faultUpdateSchema } from '../schemas/fault'
 import { FAULT_PRIORITY_OPTIONS, FAULT_STATUS_META } from '../types/fault'
 import type { Fault, FaultPriority, FaultUpdatePayload } from '../types/fault'
@@ -152,6 +152,21 @@ const TEXT_PLACEHOLDERS: Partial<Record<DialogName, string>> = {
   return: '请填写退回原因（至少 2 个字）',
 }
 const textPlaceholder = computed(() => (dialogName.value ? TEXT_PLACEHOLDERS[dialogName.value] ?? '' : ''))
+
+// 文本框输入上限按动作取值，与 zod 校验共用 schemas/auth 的 TEXT_LIMITS（单一来源）：
+// 理由类（改派/退回/代确认）后端只收 500 字，进展/结果说明 2000 字。
+// 之前写死 2000 导致计数器放到 2000、提交却被 500 的校验拦下（显示与校验不对称）。
+const TEXT_MAXLENGTHS: Partial<Record<DialogName, number>> = {
+  reassign: TEXT_LIMITS.reason,
+  confirm: TEXT_LIMITS.reason,
+  return: TEXT_LIMITS.reason,
+  progress: TEXT_LIMITS.progressNote,
+  submit: TEXT_LIMITS.resultNote,
+}
+// 未登记的动作兜底取最严的 reason 上限（宁可少不行，避免又多一个 2000 默认值）
+const textMaxlength = computed(() =>
+  dialogName.value ? TEXT_MAXLENGTHS[dialogName.value] ?? TEXT_LIMITS.reason : TEXT_LIMITS.reason,
+)
 
 // 指派/改派候选：启用中的处理人员；改派时排除现任（选同样的人无意义且会写时间线噪声）
 const handlerOptions = computed(() =>
@@ -344,7 +359,7 @@ const dialogLoading = computed(() => {
             type="textarea"
             :rows="3"
             :placeholder="textPlaceholder"
-            maxlength="2000"
+            :maxlength="textMaxlength"
             show-word-limit
           />
         </el-form-item>

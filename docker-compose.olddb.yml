@@ -1,0 +1,30 @@
+# 编排定义（临时验证用）：让容器改用一份【第二阶段老库副本】启动，用于演练
+# 「老库 upgrade head → 播种 → 登录」整条链路，同时完全不碰默认形态的 pft-data 卷。
+#
+# 用法（仓库根目录，务必带独立项目名 -p，否则会与现网那套容器/卷同名）：
+#     mkdir -p ~/olddb && cp <老库文件> ~/olddb/fault_tracker.db
+#     OLDDIR=~/olddb docker compose -p pft-olddb -f docker-compose.yml -f docker-compose.olddb.yml up -d
+# 停止并清理（只删 pft-olddb 这套，默认那套不受影响）：
+#     docker compose -p pft-olddb -f docker-compose.yml -f docker-compose.olddb.yml down
+#
+# 合并语义（Compose 多文件）：
+#   · backend.environment 同键【覆盖】→ DATABASE_URL 从卷内 /app/data 换成 bind 挂载的 /hostdata；
+#   · backend.volumes 是【追加】→ pft-data 仍挂在 /app/data，但没有代码会去读写它，原地保留；
+#   · frontend.ports 用 !override【整表替换】→ 只保留 8081，否则与默认形态的 8080 撞车
+#     （ports 默认也是追加，两个映射同时生效会导致 8080 端口被占用而启动失败）。
+# 注意：entrypoint 仍会先跑 alembic upgrade head，故 /hostdata 下的老库会被就地升级到 head
+#       （加 users/fault_timelines 表、pipeline_faults 补列）。因此只挂【副本】，且不要挂 :ro
+#       ——只读会让 alembic 写 alembic_version 失败。
+
+services:
+  backend:
+    environment:
+      # 四斜杠 = 容器内绝对路径；指向 bind 挂载进来的老库副本。
+      DATABASE_URL: sqlite:////hostdata/fault_tracker.db
+    volumes:
+      # OLDDIR 未提供时 compose 直接报错，防止误把默认空库当老库验证。
+      - ${OLDDIR:?请设置 OLDDIR 指向存放老库副本的目录}:/hostdata
+
+  frontend:
+    ports: !override
+      - "8081:80"

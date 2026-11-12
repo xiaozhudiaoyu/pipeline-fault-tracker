@@ -303,6 +303,31 @@ docker compose -f docker-compose.yml -f docker-compose.pg.yml up -d --build
 
 > 本机 Docker 在 WSL 内时，上述 `docker` 命令从 PowerShell 经 `wsl -e bash -c "..."` 进入（见项目环境说明）；在已装 Docker Desktop 的机器上直接执行即可。
 
+### 11.6 用老库副本验证迁移（可选，不碰默认数据卷）
+
+想验证「第二阶段老库 → `alembic upgrade head` → 播种 → 登录」整条链路，又不想动 `pft-data` 里现网那份库时，用 `docker-compose.olddb.yml` 叠加一套**独立项目名**（`-p pft-olddb`）的实例：
+
+```bash
+# 1) 准备老库副本（切勿直接挂原始文件：entrypoint 会就地升级挂载的那份）
+mkdir -p ~/olddb && cp <老库文件路径> ~/olddb/fault_tracker.db
+
+# 2) 起独立实例；backend entrypoint 自动把副本升到 head，日志可见 Running upgrade a74bf448a946 -> …
+OLDDIR="$HOME/olddb" docker compose -p pft-olddb -f docker-compose.yml -f docker-compose.olddb.yml up -d
+
+# 3) 向这份升级后的老库播种（补齐 5 个账号；库中已有流水线则跳过数据播种）
+OLDDIR="$HOME/olddb" docker compose -p pft-olddb -f docker-compose.yml -f docker-compose.olddb.yml \
+  run --rm -e SEED_PASSWORD="你的密码" backend uv run --no-sync python seed.py
+
+# 4) 浏览器打开 http://localhost:8081，用 admin01 / 你的密码 登录，应看到老库原有故障
+#    验证完收掉这套（默认那套 8080 全程不受影响）
+docker compose -p pft-olddb -f docker-compose.yml -f docker-compose.olddb.yml down
+rm -rf ~/olddb
+```
+
+- `OLDDIR` 指向存放副本的目录，被挂进容器 `/hostdata`，`DATABASE_URL` 随之覆盖为 `sqlite:////hostdata/fault_tracker.db`；compose 用 `${OLDDIR:?…}` 强制，不填直接报错，防止误把默认空库当老库验证。**第 3 步同样要带 `OLDDIR`**，`run` 也是同一套编排。
+- 两处 Compose 多文件合并语义（均已实测踩过）：`volumes` 短语法的源与目标之间**不能有空格**，否则报 `missing a mount target`；`ports` 默认也是**追加**而非替换，故 override 里用 `ports: !override` 整表替换，否则会连默认的 `8080:80` 一起申请而报 `port is already allocated`。
+- 老库升到 head 后 `users` 表是空的，**必须跑第 3 步才能登录**；`seed.py` 按用户名逐个补齐，对已存在账号不重置密码（口径见 11.3）。
+
 ## 十二、自检结果与已知问题（需求八.4）
 
 **已实测通过（静态/离线，AI 直读磁盘或跑脚本为证）**：

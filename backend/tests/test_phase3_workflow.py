@@ -29,6 +29,7 @@
 #   AU6 普通用户不能查看/修改他人故障 → 403/404
 #   AU7 管理员改派需填原因，改派后旧负责人失权、新负责人可操作
 #   AU8 创建人停用时管理员可代确认（需原因）
+#   AU8b 创建人停用/无创建人时管理员可代退回（需原因），负责人不变（需求二.5）
 #   AU9 管理员在故障完成前可调优先级，优先级调整记入时间线
 #
 # ── 时间线（需求四）──
@@ -357,6 +358,24 @@ class TestWorkflowCrud:
         # 管理员代确认：reason 必填（crud 层已校验 is_delegated 分支）
         f = crud.confirm_fault(self.db, self.fault.id, "创建人已停用，管理员代确认", actor=self.admin)
         assert f.status.value == "done"
+
+    def test_au8b_admin_return_on_behalf(self):
+        """创建人停用后管理员可代退回（需求二.5）：状态回 processing、负责人不变、时间线记操作人与原因。"""
+        from app import crud
+        from app.models import FaultTimeline
+        crud.assign_fault(self.db, self.fault.id, self.handler.id, actor=self.admin)
+        crud.start_fault(self.db, self.fault.id, actor=self.handler)
+        crud.submit_fault(self.db, self.fault.id, "更换轴承并复测正常", actor=self.handler)
+        # 停用创建人（走真实停用路径，顺手 bump token_version，与代确认用例同口径）
+        crud.set_user_active(self.db, self.creator, False)
+        f = crud.return_fault(self.db, self.fault.id, "创建人已停用，管理员代退回", actor=self.admin)
+        assert f.status.value == "processing"
+        assert f.assignee_id == self.handler.id  # 负责人不变
+        entries = self.db.query(FaultTimeline).filter_by(fault_id=f.id).all()
+        returned = [t for t in entries if t.action.value == "return"]
+        assert len(returned) == 1
+        assert returned[0].operator_id == self.admin.id
+        assert returned[0].note == "创建人已停用，管理员代退回"
 
 
 # ═══════════════════════════════════════════════════════════════════════════

@@ -20,6 +20,7 @@
 #   B4 occurred_at：未来 +30s（60s 容差内）过；naive 与 aware 两种时态都能比较
 #   B5 handling_note（Transition）：strip 后 4 字拒 / 5 字过；纯空格拒；2001 字拒
 #   B6 PipelineCreate code：空串拒 / 1 字过 / 51 字拒
+#   B7 FaultReturnIn.reason：纯空格视同未填拒；strip 后 <2 字拒；合法值 首尾空白剔除后入库
 
 from datetime import datetime, timedelta, timezone
 
@@ -27,7 +28,7 @@ import pytest
 from pydantic import ValidationError
 
 from app.models import FaultStatus
-from app.schemas import FaultCreate, FaultTransition, FaultUpdate, PipelineCreate
+from app.schemas import FaultCreate, FaultReturnIn, FaultTransition, FaultUpdate, PipelineCreate
 
 
 def _fault_payload(**overrides):
@@ -155,3 +156,15 @@ class TestBoundary:
         with pytest.raises(ValidationError):
             PipelineCreate(code="C" * 51, name="总装线A")     # 51 > max_length=50
         assert PipelineCreate(code="C", name="总装线A").code == "C"  # 恰好 1 字过
+
+    def test_b7_return_reason_strip(self):
+        """退回理由的空白口径（固化，非新增行为）。
+
+        校验位 schema 层，不区分操作人：创建人自退与管理员代退回走同一个
+        FaultReturnIn，因此“纯空格不算填写”对两种角色同等生效。
+        """
+        with pytest.raises(ValidationError):
+            FaultReturnIn(reason="    ")                     # 纯空格视同未填
+        with pytest.raises(ValidationError):
+            FaultReturnIn(reason=" 常 ")                      # strip 后 1 字 < 2
+        assert FaultReturnIn(reason=" 未彻底解决 ").reason == "未彻底解决"  # 首尾空白剔除入库

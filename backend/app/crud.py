@@ -418,7 +418,12 @@ def confirm_fault(
 
 
 def return_fault(db: Session, fault_id: int, reason: str, *, actor: User) -> PipelineFault:
-    """退回处理：awaiting_confirmation → processing，理由必填写入时间线。"""
+    """退回处理：awaiting_confirmation → processing，理由必填写入时间线。
+
+    原因非空白的校验在 schema 层（FaultReturnIn.reason strip 后 ≥2 字），不区分创建人
+    自退与管理员代退回。对比：confirm_fault 另在 crud 层校 is_delegated 分支必填，
+    因为那边的 reason 在 schema 里是选填（创建人本人确认无需备注）。
+    """
     fault = get_fault(db, fault_id)
     check_can_return(actor, fault)
     from_status = fault.status

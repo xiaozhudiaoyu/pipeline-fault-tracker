@@ -435,11 +435,14 @@ class FaultConfirmIn(BaseModel):
 
 
 class FaultReturnIn(BaseModel):
-    """POST /api/faults/{id}/return：创建人退回至 processing（需求四.3、SM9）。"""
+    """POST /api/faults/{id}/return：退回至 processing（需求四.3、SM8；创建人不可用时管理员代退回亦走本体，需求二.5）。
+
+    reason 对两种角色同等必填（需求二.5 要求代退回记录原因），空白口径见下方 validator。
+    """
 
     model_config = ConfigDict(extra="forbid")
 
-    reason: str = Field(min_length=2, max_length=500, description="退回理由，必填")
+    reason: str = Field(min_length=2, max_length=500, description="退回理由，创建人与代退回管理员均必填")
 
     @field_validator("reason")
     @classmethod

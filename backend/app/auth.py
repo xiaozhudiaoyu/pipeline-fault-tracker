@@ -297,13 +297,29 @@ def check_can_confirm(user: User, fault: PipelineFault) -> None:
 
 
 def check_can_return(user: User, fault: PipelineFault) -> None:
-    """退回处理（SM8）：仅创建人本人，且状态为 awaiting_confirmation。
-    管理员不默认能代退回（需求未提及，按保守处理）。
+    """退回处理（SM8 / AU8b）：
+      · 状态必须为 awaiting_confirmation；
+      · 创建人本人退回 → 可；
+      · 管理员代退回 → 仅当创建人已停用或不存在（历史数据/已删账号），需求二.5；
+      · 负责人与其他人退回 → 拒绝（退回是业务方的验收权力）。
+
+    与 check_can_confirm 的一处【有意差异】（用户裁定）：管理员兼任本故障负责人时，
+    代确认被防自闭环规则拦住，代退回不拦 —— 把待确认的故障打回重做本就是退回语义本身，
+    拦住只会让停用创建人的故障卡在待确认出不去。行为由 test_admin_self_assigned_can_proxy_return 固化。
+
+    实现细节：读 fault.created_by 会触发 lazy load，调用方需保证当前 session 可查库。
     """
     if fault.status != FaultStatus.awaiting_confirmation:
         raise InvalidTransitionError(current=fault.status.value, target="return")
-    if fault.created_by_id != user.id:
-        raise PermissionDeniedError("仅创建人可以退回处理")
+    if fault.created_by_id is not None and fault.created_by_id == user.id:
+        return
+    # 管理员代退回：仅在创建人不可用时
+    if user.role == FaultRole.admin:
+        creator = fault.created_by
+        if creator is None or not creator.is_active:
+            return
+        raise PermissionDeniedError("创建人仍在启用中，应由创建人本人退回")
+    raise PermissionDeniedError("仅创建人可退回处理，或创建人不可用时由管理员代退回")
 
 
 def check_can_priority_change(user: User, fault: PipelineFault) -> None:

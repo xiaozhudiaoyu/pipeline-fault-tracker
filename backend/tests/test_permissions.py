@@ -13,7 +13,7 @@
 #   check_can_progress       同上
 #   check_can_submit         同上
 #   check_can_confirm        SM7/SM12 + AU8（管理员代确认，创建人停用/历史数据）
-#   check_can_return         SM8：仅创建人
+#   check_can_return         SM8：创建人 + AU8b（创建人停用/历史数据时管理员可代退回）
 #   check_can_priority_change AU9：done 前管理员或创建人
 
 from datetime import datetime
@@ -379,13 +379,47 @@ class TestCheckCanReturn:
         check_can_return(alice, f)
 
     def test_non_creator_rejected(self, db_session, pipeline, alice, bob, admin):
-        """退回是业务方权力，负责人/管理员都不能代退。"""
+        """退回是业务方权力：负责人不能代退；创建人仍启用时管理员也不能代退。"""
         f = _make_fault(db_session, pipeline, creator=alice, assignee=bob,
                         status=FaultStatus.awaiting_confirmation)
         with pytest.raises(PermissionDeniedError):
             check_can_return(bob, f)
         with pytest.raises(PermissionDeniedError):
             check_can_return(admin, f)
+
+    def test_admin_proxy_when_creator_inactive(
+        self, db_session, pipeline, alice, bob, admin
+    ):
+        """AU8b：创建人停用后，管理员可代退回（需求二.5）。"""
+        alice.is_active = False
+        alice.token_version += 1
+        db_session.commit()
+        f = _make_fault(db_session, pipeline, creator=alice, assignee=bob,
+                        status=FaultStatus.awaiting_confirmation)
+        check_can_return(admin, f)
+
+    def test_admin_proxy_when_creator_missing(
+        self, db_session, pipeline, bob, admin
+    ):
+        """历史数据（无创建人）：管理员可代退回。"""
+        f = _make_fault(db_session, pipeline, creator=None, assignee=bob,
+                        status=FaultStatus.awaiting_confirmation)
+        check_can_return(admin, f)
+
+    def test_admin_self_assigned_can_proxy_return(
+        self, db_session, pipeline, alice, admin
+    ):
+        """裁定：管理员兼任负责人时仍可代退回（与代确认不同，需求二.5 未设此限制）。
+
+        代确认侧有防自闭环拦截（TestCheckCanConfirm.test_admin_self_assigned_cannot_confirm），
+        退回方向按用户当场裁定不加限制：待确认的故障打回给负责人重做本就是退回语义本身。
+        """
+        alice.is_active = False
+        alice.token_version += 1
+        db_session.commit()
+        f = _make_fault(db_session, pipeline, creator=alice, assignee=admin,
+                        status=FaultStatus.awaiting_confirmation)
+        check_can_return(admin, f)
 
     def test_wrong_state_rejected(self, db_session, pipeline, alice, bob):
         f = _make_fault(db_session, pipeline, creator=alice, assignee=bob,

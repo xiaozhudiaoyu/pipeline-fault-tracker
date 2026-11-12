@@ -16,7 +16,7 @@
 #   POST   /api/faults/{id}/progress  追加进展（当前负责人，processing 内）
 #   POST   /api/faults/{id}/submit    提交结果（当前负责人，processing→awaiting_confirmation）
 #   POST   /api/faults/{id}/confirm   确认完成（创建人 或 admin 代确认，→ done）
-#   POST   /api/faults/{id}/return    退回处理（创建人，awaiting→processing）
+#   POST   /api/faults/{id}/return    退回处理（创建人，或创建人不可用时管理员代退回，awaiting→processing）
 #   POST   /api/faults/{id}/priority  优先级调整（admin 或创建人，done 之前）
 #
 # D5 决策：旧 PATCH /{id}/transition 已移除，改由上述动作端点覆盖，避免"知道
@@ -382,7 +382,7 @@ def confirm_fault(
     "/{fault_id}/return",
     response_model=schemas.FaultOut,
     responses={
-        403: {"model": schemas.ErrorOut, "description": "非创建人"},
+        403: {"model": schemas.ErrorOut, "description": "非创建人，且非创建人不可用时的代退回管理员"},
         409: {"model": schemas.ErrorOut, "description": "当前状态不是 awaiting_confirmation"},
     },
 )
@@ -392,7 +392,10 @@ def return_fault(
     user: CurrentUser,
     db: Session = Depends(get_db),
 ) -> schemas.FaultOut:
-    """退回处理：创建人退回，awaiting_confirmation → processing，理由必填并写入时间线。"""
+    """退回处理：创建人退回，awaiting_confirmation → processing，理由必填并写入时间线。
+
+    创建人已停用或旧故障无对应账号时，管理员可代退回（需求二.5），同样必填原因、负责人不变。
+    """
     fault = crud.return_fault(db, fault_id, payload.reason, actor=user)
     return schemas.FaultOut.model_validate(fault)
 

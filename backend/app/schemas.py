@@ -11,10 +11,11 @@
 #   · extra="forbid" —— 客户端多传拼错名字的字段直接 422，不被静默丢弃；
 #   · field_validator —— 跨值/带容差的校验（如时间不晚于当前）用装饰器，同样汇入 422 details。
 
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from . import timeutil
 from .models import FaultPriority, FaultRole, FaultStatus, TimelineAction
 
 
@@ -96,22 +97,24 @@ class FaultCreate(BaseModel):
     @field_validator("occurred_at")
     @classmethod
     def occurred_at_not_in_future(cls, v: datetime) -> datetime:
-        """业务时间不能是未来，且统一转成【本地 naive】入库（需求五.1 时区修复）。
+        """业务时间不能是未来，且统一转成【业务时区 naive 墙钟】入库（需求五.1 时区口径）。
 
         容忍 60 秒时钟偏移：客户端与服务器时钟未必同步，秒级误差不应误拦。
-        aware/naive 统一换算成 aware 再比，避免 Python 直接比较抛 TypeError（会变成 500）。
+        归一与比较均走 timeutil，naive/aware 两种时态不会直接比较而抛 TypeError（会变成 500）。
 
-        入库口径（BUG 根因）：库里 DateTime 列是不带时区的 TIMESTAMP，SQLite 落库时
-        【按原值的墙钟字段直存、忽略 tzinfo】—— 客户端传 "2026-11-01T05:00:00Z"（即北京
-        13:00 的 UTC 写法）就会存成 05:00，读回按本地解析显示 05:00，即需求描述的现象。
-        故这里先 astimezone() 转本机时区、再抹掉 tzinfo 存本地墙钟，与 models.py 的
-        _local_now()（created_at/updated_at/closed_at 均本地 naive）口径一致。
+        两个 BUG 根因（均因旧写法隐式读【进程时区】）：
+        · 判定：旧写法用 `naive.astimezone()` 给无偏移输入补 tzinfo，Python 补的是进程时区；
+          backend 容器默认 UTC，前端发来的北京墙钟 16:26 就被当成 UTC 16:26，比当时
+          （UTC 08:26）晚 8 小时 → 近 8 小时内的发生时间一律 422。
+        · 入库：库里 DateTime 列不带时区，SQLite 落库【按原值的墙钟字段直存、忽略 tzinfo】——
+          客户端传 "2026-11-01T05:00:00Z"（即北京 13:00 的 UTC 写法）就会存成 05:00，读回按
+          本地解析显示 05:00，即需求五.1 描述的现象。故仍抹掉 tzinfo 存业务墙钟，与
+          models.py 的 _local_now()（created_at/updated_at/closed_at 均业务 naive）口径一致。
         """
-        now = datetime.now(timezone.utc)
-        v_aware = v if v.tzinfo is not None else v.astimezone()
-        if v_aware > now + timedelta(seconds=60):
+        wall = timeutil.to_business_naive(v)
+        if wall > timeutil.business_now() + timedelta(seconds=60):
             raise ValueError("故障发生时间不得晚于当前时间")
-        return v_aware.astimezone().replace(tzinfo=None)
+        return wall
 
     # 首字符空白仍由上面的 pattern 拦下（既有裁定不动），这两个 validator 负责尾部空白
     # 与「整串空白」——实测登记通道传 symptom="     " 会 201 入库（需求五.2）。

@@ -26,9 +26,9 @@
 #   · 只"加"不做删表/清库等破坏性操作（遵循规则 2.6 / 2.7）。
 
 # import os  # 旧写法（下方 seed_users 里的 os.getenv）所需，按原样保留备查
-from datetime import datetime, timedelta
+from datetime import timedelta
 
-from app import crud, schemas
+from app import crud, schemas, timeutil
 from app.config import settings
 from app.database import SessionLocal, init_models
 from app.models import FaultRole, FaultStatus, User
@@ -86,7 +86,9 @@ def seed_data(db, users: dict[str, User]) -> None:
 
     admin, h1, h2 = users["admin01"], users["handler01"], users["handler02"]
     r1, r2 = users["reporter01"], users["reporter02"]
-    now = datetime.now()
+    # 基准时间取【业务时区】此刻：旧写法 datetime.now() 在 UTC 容器里给出的是 UTC 墙钟，
+    # 减偏移后仍会被 occurred_at 校验按业务时区解释 → 演示数据的发生时间整体比真实时刻早 8 小时。
+    now = timeutil.business_now()
 
     def _mk(creator: User, pipeline, location: str, ago: timedelta, symptom: str):
         return crud.create_fault(db, schemas.FaultCreate(

@@ -26,10 +26,12 @@
 #   B1 空库列表 → items=[] total=0
 #   B2 POST 合法但 occurred_at 为未来（超容差）→ 422
 
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 import httpx
 import pytest
+
+from app import timeutil
 
 # 所有 async 测试统一跑 anyio 插件的 asyncio 后端（见 conftest.anyio_backend）
 pytestmark = pytest.mark.anyio
@@ -46,7 +48,7 @@ def _fault_body(pipeline_id: int, **overrides) -> dict:
     body = {
         "pipeline_id": pipeline_id,
         "location": "3号工位传送带",
-        "occurred_at": (datetime.now() - timedelta(hours=1)).isoformat(),
+        "occurred_at": (timeutil.business_now() - timedelta(hours=1)).isoformat(),
         "symptom": "传送带异响并卡死",
     }
     body.update(overrides)
@@ -80,8 +82,8 @@ class TestHappyPath:
 
     async def test_n2_list_shape_and_order(self, client):
         pid = await _seed_pipeline(client)
-        f_old = await _seed_fault(client, pid, occurred_at=(datetime.now() - timedelta(hours=3)).isoformat())
-        f_new = await _seed_fault(client, pid, occurred_at=(datetime.now() - timedelta(minutes=5)).isoformat())
+        f_old = await _seed_fault(client, pid, occurred_at=(timeutil.business_now() - timedelta(hours=3)).isoformat())
+        f_new = await _seed_fault(client, pid, occurred_at=(timeutil.business_now() - timedelta(minutes=5)).isoformat())
         resp = await client.get("/api/faults")
         assert resp.status_code == 200
         data = resp.json()
@@ -184,7 +186,7 @@ class TestBoundary:
 
     async def test_b2_future_occurred_at_rejected(self, client):
         pid = await _seed_pipeline(client)
-        future = (datetime.now() + timedelta(hours=2)).isoformat()
+        future = (timeutil.business_now() + timedelta(hours=2)).isoformat()
         resp = await client.post("/api/faults", json=_fault_body(pid, occurred_at=future))
         assert resp.status_code == 422
         _assert_error_shape(resp.json(), "validation_error")

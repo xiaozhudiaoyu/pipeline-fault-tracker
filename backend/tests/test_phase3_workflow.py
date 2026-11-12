@@ -43,6 +43,7 @@
 #   FX2 空格校验：登记与修改两个通道，必填字段都不能只填空格；合法值 strip 后入库
 #   FX3 显式 null：priority/location/symptom 传 null → 422 明确提示（原为 500 或静默忽略），数据不变
 #   FX4 data 目录：SQLite 库文件父目录不存在时自动创建（含 alembic 迁移进程）
+#   FX5 进程时区：进程时区为 UTC（容器实况）时，北京墙钟“此刻”仍可登记且 created_at 仍为北京墙钟
 #
 # ── 旧数据兼容（需求六）──
 #   HD1 旧故障 created_by_id/assignee_id 为 NULL → 响应显示"历史数据"
@@ -52,10 +53,15 @@
 # ─── 以下 import 在实现前会失败（预期行为：ModuleNotFoundError = 红） ───
 # 实现后逐步取消注释或替换为正确路径。
 
+import os
 import pytest
+import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from sqlalchemy.orm import Session
+
+from app import timeutil
+from app.config import settings
 
 # 这些在 M1/M3 实现后才能正常导入
 # from app.models import User, FaultTimeline, FaultStatus, FaultRole, PipelineFault
@@ -103,7 +109,7 @@ class TestModelsPhase3:
         db_session.commit()
         f = PipelineFault(
             pipeline_id=p.id, location="工位1",
-            occurred_at=datetime.now(), symptom="测试故障现象描述",
+            occurred_at=timeutil.business_now(), symptom="测试故障现象描述",
             created_by_id=u.id, assignee_id=None,
         )
         db_session.add(f)
@@ -122,7 +128,7 @@ class TestModelsPhase3:
         db_session.add(p)
         db_session.commit()
         f = PipelineFault(pipeline_id=p.id, location="工位2",
-                          occurred_at=datetime.now(), symptom="时间线测试故障",
+                          occurred_at=timeutil.business_now(), symptom="时间线测试故障",
                           created_by_id=u.id)
         db_session.add(f)
         db_session.commit()
@@ -245,7 +251,7 @@ class TestWorkflowCrud:
             db_session,
             schemas.FaultCreate(
                 pipeline_id=self.p.id, location="1号工位",
-                occurred_at=datetime.now() - timedelta(minutes=30),
+                occurred_at=timeutil.business_now() - timedelta(minutes=30),
                 symptom="传送带异响并卡死需要紧急处理",
             ),
             creator=self.creator,
@@ -408,7 +414,7 @@ class TestTimelineAtomicity:
         fault = crud.create_fault(
             db_session,
             schemas.FaultCreate(
-                pipeline_id=p.id, location="工位", occurred_at=datetime.now(),
+                pipeline_id=p.id, location="工位", occurred_at=timeutil.business_now(),
                 symptom="原子性测试故障现象描述",
             ),
             creator=creator,
@@ -452,7 +458,7 @@ class TestBugFixes:
     """
 
     def test_fx1_timezone_preserved(self, db_session: Session, admin_user):
-        """FX1 时区：naive/+08:00/Z 三种写法入库后都是同一本地墙钟（需求五.1）。
+        """FX1 时区：naive/+08:00/Z 三种写法入库后都是同一业务时区墙钟（需求五.1）。
 
         修复前 validator 原样返回入参，SQLite 落库只看墙钟字段、忽略 tzinfo，
         传 "05:00Z"（= 北京 13:00）就存成 05:00 → 前端按本地解析显示 05:00。
@@ -473,21 +479,23 @@ class TestBugFixes:
                 occurred_at=datetime.fromisoformat(iso),
                 symptom="时区测试故障现象描述",
             )
-            # 出口即本地 naive，与 models._local_now()（created_at 等）口径一致
+            # 出口即业务时区 naive，与 models._local_now()（created_at 等）口径一致
             assert body.occurred_at.tzinfo is None, iso
             f = crud.create_fault(db_session, body, creator=admin_user)
             db_session.expire_all()
             stored = db_session.get(PipelineFault, f.id).occurred_at
             aware = datetime.fromisoformat(iso)
-            expected = (aware.astimezone() if aware.tzinfo else aware).replace(tzinfo=None)
+            expected = timeutil.to_business_naive(aware)
             assert stored == expected, iso
-            # 需求五.1 的具体场景（本机为北京时间）：三种写法都落在 13:00
-            if datetime.now().astimezone().utcoffset() == timedelta(hours=8):
+            # 需求五.1 的具体场景（业务时区 +08）：三种写法都落在北京墙钟 13:00。
+            # 判据取自 settings 而不是进程时区（旧写法 astimezone() 在 CI 的 UTC runner
+            # 上会算出 05:00，导致该断言被整段跳过、缺陷漏网）。
+            if settings.business_utc_offset_hours == 8:
                 assert stored.hour == 13, iso
 
     @pytest.mark.anyio
     async def test_fx1b_api_response_has_no_utc_offset(self, client):
-        """FX1 链路级：POST 传 Z 写法，响应与重查都返回本地墙钟且不带时区后缀。
+        """FX1 链路级：POST 传 Z 写法，响应与重查都返回业务时区墙钟且不带时区后缀。
 
         响应若带 +00:00/Z，前端 new Date() 会按 UTC 解析再转本地 → 显示偏移；
          naive ISO 被前端按本地解析，故响应必须是“本地时间 + 无后缀”这一套。
@@ -503,8 +511,8 @@ class TestBugFixes:
             },
         )
         assert resp.status_code == 201
-        local_noon = datetime(2026, 11, 1, 5, 0, tzinfo=timezone.utc).astimezone()
-        expected = local_noon.replace(tzinfo=None).isoformat()
+        local_noon = datetime(2026, 11, 1, 5, 0, tzinfo=timezone.utc)
+        expected = timeutil.to_business_naive(local_noon).isoformat()
         assert resp.json()["occurred_at"] == expected
         detail = await client.get(f"/api/faults/{resp.json()['id']}")
         got = detail.json()["occurred_at"]
@@ -520,7 +528,7 @@ class TestBugFixes:
             json={
                 "pipeline_id": pid,
                 "location": "2号工位",
-                "occurred_at": (datetime.now() - timedelta(minutes=5)).isoformat(),
+                "occurred_at": (timeutil.business_now() - timedelta(minutes=5)).isoformat(),
                 "symptom": "     ",
             },
         )
@@ -533,7 +541,7 @@ class TestBugFixes:
             json={
                 "pipeline_id": pid,
                 "location": "3号工位",
-                "occurred_at": (datetime.now() - timedelta(minutes=5)).isoformat(),
+                "occurred_at": (timeutil.business_now() - timedelta(minutes=5)).isoformat(),
                 "symptom": "传送带异响并卡死",
             },
         )
@@ -570,7 +578,7 @@ class TestBugFixes:
             json={
                 "pipeline_id": pid,
                 "location": "7号工位",
-                "occurred_at": (datetime.now() - timedelta(minutes=5)).isoformat(),
+                "occurred_at": (timeutil.business_now() - timedelta(minutes=5)).isoformat(),
                 "symptom": "显式 null 验证故障现象",
                 "priority": "urgent",
             },
@@ -616,6 +624,55 @@ class TestBugFixes:
         ensure_sqlite_dir("postgresql+psycopg://u:p@localhost:5432/pft_guard_db")
         assert not Path("pft_guard_db").exists()
 
+    @pytest.mark.anyio
+    async def test_fx5_process_timezone_does_not_leak_into_business_time(self, client):
+        """FX5 进程时区：把进程时区切成 UTC（backend 容器实况）后，两个口径都得站住。
+
+        ① 北京墙钟的“此刻”仍能登记；② created_at 仍是北京（业务）墙钟，不是 UTC。
+
+        修复前两处都隐式依赖进程时区：validator 的 `naive.astimezone()` 把无偏移输入
+        按进程时区补 tzinfo，容器（UTC）里北京 16:26 被当成 UTC 16:26 → 误判“未来 8
+        小时”422；models._local_now 的 `datetime.now()` 直接取 UTC 墙钟 → 登记时间比
+        业务时间早 8 小时。断言基准内联写死 +08:00，不复用被测模块的 helper。
+
+        os.environ["TZ"] + time.tzset() 只在 POSIX 生效（Windows 无 tzset），本机 skip；
+        CI 的 ubuntu runner 与容器内跑 pytest 时会真实执行本用例。
+        """
+        if not hasattr(time, "tzset"):
+            pytest.skip("time.tzset 仅 POSIX 可用，Windows 上 TZ 环境变量无效")
+
+        saved_tz = os.environ.get("TZ")
+        os.environ["TZ"] = "UTC"
+        time.tzset()
+        try:
+            pid = (await client.post("/api/pipelines", json={"code": "ProcTZ", "name": "进程时区线"})).json()["id"]
+            beijing_wall = datetime.now(timezone(timedelta(hours=8))).replace(tzinfo=None, microsecond=0)
+
+            created = await client.post(
+                "/api/faults",
+                json={
+                    "pipeline_id": pid,
+                    "location": "8号工位",
+                    "occurred_at": beijing_wall.isoformat(),
+                    "symptom": "进程时区为 UTC 时的登记验证",
+                },
+            )
+            assert created.status_code == 201, created.text
+
+            detail = await client.get(f"/api/faults/{created.json()['id']}")
+            body = detail.json()
+            # 业务时间原样落北京墙钟（不被进程时区二次换算）
+            assert datetime.fromisoformat(body["occurred_at"]) == beijing_wall
+            # 系统时间与业务时区对齐：容器进程是 UTC 时也得写北京墙钟（容差 5 分钟）
+            beijing_now = datetime.now(timezone(timedelta(hours=8))).replace(tzinfo=None)
+            assert abs((beijing_now - datetime.fromisoformat(body["created_at"])).total_seconds()) < 300, body["created_at"]
+        finally:
+            if saved_tz is None:
+                os.environ.pop("TZ", None)
+            else:
+                os.environ["TZ"] = saved_tz
+            time.tzset()
+
 
 # ═══════════════════════════════════════════════════════════════════════════
 # 第六部分：旧数据兼容测试（需求六，M2/M5 实现后转绿）
@@ -634,7 +691,7 @@ class TestHistoricalData:
         db_session.commit()
         f = PipelineFault(
             pipeline_id=p.id, location="旧数据工位",
-            occurred_at=datetime.now(), symptom="旧数据故障现象描述",
+            occurred_at=timeutil.business_now(), symptom="旧数据故障现象描述",
             created_by_id=None, assignee_id=None,
         )
         db_session.add(f)
@@ -666,7 +723,7 @@ class TestHistoricalData:
         db_session.commit()
         f = PipelineFault(
             pipeline_id=p.id, location="历史工位",
-            occurred_at=datetime.now(), symptom="历史数据可继续处理验证",
+            occurred_at=timeutil.business_now(), symptom="历史数据可继续处理验证",
             created_by_id=None, assignee_id=None,
         )
         db_session.add(f)
@@ -690,7 +747,7 @@ class TestHistoricalData:
 #     此前的 TL 测试只直构 ORM 对象未经序列化，缺陷漏网 → 本组走完整 HTTP 链补盖。
 #   BUG-B 时间口径：created_at/updated_at 用 server_default=func.now()，SQLite 的
 #     CURRENT_TIMESTAMP 与 PG 容器都产生 UTC；naive ISO 被前端按本地解析 → 早 8 小时。
-#     口径已定（统一存本地时间，与 closed_at 的 datetime.now() 对齐），免 DDL 迁移。
+#     口径已定（统一存业务时区墙钟，走 timeutil.business_now()，与 closed_at 对齐），免 DDL 迁移。
 # ═══════════════════════════════════════════════════════════════════════
 
 
@@ -707,7 +764,7 @@ class TestTimelineOperatorAndClock:
             json={
                 "pipeline_id": p.json()["id"],
                 "location": "6号工位",
-                "occurred_at": (datetime.now() - timedelta(hours=1)).isoformat(),
+                "occurred_at": (timeutil.business_now() - timedelta(hours=1)).isoformat(),
                 "symptom": "时间线与操作人口径验证",
             },
         )
@@ -727,23 +784,25 @@ class TestTimelineOperatorAndClock:
 
     @pytest.mark.anyio
     async def test_bug_b_system_time_is_local_clock(self, client):
-        """BUG-B：故障与时间线的 created_at 应为本地时间（与 datetime.now() 同口径，容差 5 分钟）。
+        """BUG-B：故障与时间线的 created_at 应为业务时区墙钟（与 timeutil.business_now() 同口径，容差 5 分钟）。
 
         修复前存的是 UTC → 差约 8 小时，本断言即红；不拿 occurred_at（业务时间由用户填）做基准。
+        基准走 business_now() 而不走 datetime.now()：否则在 UTC 进程（CI/容器）上两边一起偏，
+        缺陷同样被抵消 —— FX5 则是把进程时区真的切成 UTC 来跑同一链路。
         """
         fid = await self._seed_fault(client)
-        now = datetime.now()
+        now = timeutil.business_now()
 
         detail = await client.get(f"/api/faults/{fid}")
         fault_ts = datetime.fromisoformat(detail.json()["created_at"])
         assert abs((now - fault_ts).total_seconds()) < 300, (
-            f"故障 created_at={fault_ts} 与本地时间 {now} 相差超 5 分钟（疑似 UTC 口径）"
+            f"故障 created_at={fault_ts} 与业务时间 {now} 相差超 5 分钟（疑似 UTC 口径）"
         )
 
         tl = await client.get(f"/api/faults/{fid}/timelines")
         timeline_ts = datetime.fromisoformat(tl.json()[0]["created_at"])
         assert abs((now - timeline_ts).total_seconds()) < 300, (
-            f"时间线 created_at={timeline_ts} 与本地时间 {now} 相差超 5 分钟（疑似 UTC 口径）"
+            f"时间线 created_at={timeline_ts} 与业务时间 {now} 相差超 5 分钟（疑似 UTC 口径）"
         )
 
 
@@ -774,7 +833,7 @@ class TestAssignResponseAssignee:
             json={
                 "pipeline_id": p.json()["id"],
                 "location": "8号工位",
-                "occurred_at": (datetime.now() - timedelta(hours=1)).isoformat(),
+                "occurred_at": (timeutil.business_now() - timedelta(hours=1)).isoformat(),
                 "symptom": "指派响应体负责人验证",
             },
         )

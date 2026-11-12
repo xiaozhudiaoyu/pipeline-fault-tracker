@@ -12,12 +12,10 @@
 # SQLAlchemy 2 查询风格：select() 构造语句，db.scalars()/db.scalar() 执行。
 # 所有 db: Session 由路由层 Depends(get_db) 注入，本层不负责开关 session。
 
-from datetime import datetime
-
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
-from . import schemas
+from . import schemas, timeutil
 from .auth import (
     check_can_assign,
     check_can_confirm,
@@ -407,7 +405,7 @@ def confirm_fault(
         raise PermissionDeniedError("管理员代确认必须填写理由")
     from_status = fault.status
     fault.status = FaultStatus.done
-    fault.closed_at = datetime.now()
+    fault.closed_at = timeutil.business_now()
     _write_timeline(
         db, fault, TimelineAction.confirm, actor,
         from_status=from_status.value, to_status=FaultStatus.done.value,

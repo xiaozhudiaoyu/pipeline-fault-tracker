@@ -13,19 +13,29 @@ from datetime import datetime
 from sqlalchemy import DateTime, Enum, ForeignKey, String, Text, func
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
-# 系统时间口径（M6 验收反馈，BUG-B）：created_at/updated_at 统一存**本地时间**。
+from . import timeutil
+
+# 系统时间口径（M6 验收反馈 BUG-B + backend 容器时区缺陷修复）：
+#   created_at/updated_at 统一存【业务时区墙钟】（默认北京时间）。
 #   · 旧写法 server_default=func.now() 在 SQLite/PG 容器都产生 UTC，naive ISO 被前端
-#     按本地解析 → 显示早 8 小时；而 closed_at 一直是 datetime.now()（本地），两种口径并存。
-#   · 现改用 ORM 层 default/onupdate=datetime.now（本机写入），与 closed_at 对齐；
-#     server_default 保留仅作绕过 ORM 直接 SQL 写入时的兜底（那种路径不在本项目写操作范围内）。
+#     按本地解析 → 显示早 8 小时；而 closed_at 一直是 datetime.now()（进程本地），两种口径并存。
+#   · 改用 ORM 层 default/onupdate 后，口径仍取决于进程时区：backend 容器跑在 UTC，
+#     datetime.now() 就给出 UTC 墙钟 → 同样的 8 小时偏差换了一种形式重现。
+#     现工厂函数走 timeutil.business_now()，只看 settings.business_utc_offset_hours。
+#   · server_default 保留仅作绕过 ORM 直接 SQL 写入时的兜底（那种路径不在本项目写操作范围内，
+#     注意它仍是数据库自己的 UTC 口径）。
 #   · 免 Alembic 迁移：default/onupdate 是 Python 层行为，不改列 DDL。
 #   · 已知代价：存量 UTC 旧数据比新数据早 8 小时（开发库演示数据，不修补）；
 #     跨时区部署需求出现时应改走「统一 UTC + 前端转本地」方案。
 
 
 def _local_now() -> datetime:
-    """本地时间工厂（naive，与库内 DateTime 列口径一致）。"""
-    return datetime.now()
+    """业务时区的此刻墙钟（naive，与库内 DateTime 列口径一致）。
+
+    函数名里的 "local" 指【业务时区】而不是进程所在机器的时区：容器进程为 UTC 时
+    datetime.now() 会给出比用户早 8 小时的墙钟，故改走 timeutil.business_now()。
+    """
+    return timeutil.business_now()
 
 
 class Base(DeclarativeBase):

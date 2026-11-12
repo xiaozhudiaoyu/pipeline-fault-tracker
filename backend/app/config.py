@@ -31,6 +31,13 @@ class Settings(BaseSettings):
     host: str = "127.0.0.1"
     port: int = 8000
 
+    # ---- 时间口径 ----
+    # 业务时区（相对 UTC 的整小时偏移）：occurred_at 的“不得晚于当前”判定、
+    # created_at/updated_at/closed_at 的写入全部以它为准，与容器/宿主进程时区无关
+    # （缘由与边界见 timeutil.py 文件头）。默认 8 = 北京时间，异地部署用环境变量
+    # BUSINESS_UTC_OFFSET_HOURS 覆盖即可，不需改代码。
+    business_utc_offset_hours: int = 8
+
     # ---- CORS ----
     # .env 里写逗号分隔字符串，Pydantic 自动按 JSON 或逗号解析为 list
     cors_origins: list[str] = ["http://localhost:5173", "http://127.0.0.1:5173"]

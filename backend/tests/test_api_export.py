@@ -22,12 +22,12 @@
 import csv
 import io
 import re
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 import httpx
 import pytest
 
-from app import crud
+from app import crud, timeutil
 from app.models import FaultStatus
 
 # 所有 async 测试统一跑 anyio 插件的 asyncio 后端（见 conftest.anyio_backend）
@@ -62,7 +62,7 @@ def _fault_body(pipeline_id: int, **overrides) -> dict:
     body = {
         "pipeline_id": pipeline_id,
         "location": "3号工位传送带",
-        "occurred_at": (datetime.now() - timedelta(hours=1)).isoformat(),
+        "occurred_at": (timeutil.business_now() - timedelta(hours=1)).isoformat(),
         "symptom": "传送带异响并卡死",
     }
     body.update(overrides)
@@ -97,8 +97,8 @@ class TestExportHappyPath:
     async def test_n1_export_all_shape_and_order(self, client):
         """N1：无筛选导出 → 200 + text/csv + 表头 + 全部行 + occurred_at 倒序。"""
         pid = await _seed_pipeline(client)
-        f_old = await _seed_fault(client, pid, occurred_at=(datetime.now() - timedelta(hours=3)).isoformat())
-        f_new = await _seed_fault(client, pid, occurred_at=(datetime.now() - timedelta(minutes=5)).isoformat())
+        f_old = await _seed_fault(client, pid, occurred_at=(timeutil.business_now() - timedelta(hours=3)).isoformat())
+        f_new = await _seed_fault(client, pid, occurred_at=(timeutil.business_now() - timedelta(minutes=5)).isoformat())
 
         resp = await client.get("/api/faults/export")
         assert resp.status_code == 200
@@ -208,7 +208,7 @@ class TestExportBoundary:
         """
         pid = await _seed_pipeline(client)
         for hours_ago in (5, 3, 1):  # 三条不同时间的记录
-            await _seed_fault(client, pid, occurred_at=(datetime.now() - timedelta(hours=hours_ago)).isoformat())
+            await _seed_fault(client, pid, occurred_at=(timeutil.business_now() - timedelta(hours=hours_ago)).isoformat())
 
         rows = crud.list_faults_for_export(db_session, viewer=admin_user, limit=2)
         assert len(rows) == 2

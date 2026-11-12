@@ -33,12 +33,12 @@
 #   P-B1 PATCH 多传字段 → 422（extra=forbid 不 regress）
 #   P-B2 导出 CSV：表头含 priority，?priority= 导出生效
 
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 import pytest
 from pydantic import ValidationError
 
-from app import crud, schemas
+from app import crud, schemas, timeutil
 from app.models import FaultPriority, FaultRole, FaultStatus
 
 
@@ -46,7 +46,7 @@ def _fault_payload(**overrides):
     data = {
         "pipeline_id": 1,
         "location": "3号工位传送带",
-        "occurred_at": (datetime.now() - timedelta(hours=1)).isoformat(),
+        "occurred_at": (timeutil.business_now() - timedelta(hours=1)).isoformat(),
         "symptom": "传送带异响并卡死",
     }
     data.update(overrides)
@@ -76,7 +76,7 @@ def _make_fault(
         schemas.FaultCreate(
             pipeline_id=pipeline_id,
             location="3号工位传送带",
-            occurred_at=datetime.now() - timedelta(minutes=minutes_ago),
+            occurred_at=timeutil.business_now() - timedelta(minutes=minutes_ago),
             symptom="传送带异响并卡死",
             **kwargs,
         ),
@@ -219,7 +219,7 @@ def _api_fault_body(pipeline_id, **overrides):
     body = {
         "pipeline_id": pipeline_id,
         "location": "3号工位传送带",
-        "occurred_at": (datetime.now() - timedelta(hours=1)).isoformat(),
+        "occurred_at": (timeutil.business_now() - timedelta(hours=1)).isoformat(),
         "symptom": "传送带异响并卡死",
     }
     body.update(overrides)
@@ -245,7 +245,7 @@ class TestApiPriority:
             "/api/faults",
             json=_api_fault_body(
                 pid, priority="urgent",
-                occurred_at=(datetime.now() - timedelta(hours=2)).isoformat(),
+                occurred_at=(timeutil.business_now() - timedelta(hours=2)).isoformat(),
             ),
         )
         await client.post("/api/faults", json=_api_fault_body(pid))  # normal 干扰项

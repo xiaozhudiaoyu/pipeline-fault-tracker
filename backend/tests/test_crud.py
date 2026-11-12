@@ -27,12 +27,12 @@
 #   B1 list_faults 空库 → ([], 0)
 #   B2 页码超出数据量 → 空 items 但 total 不变
 
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 import pytest
 from sqlalchemy.orm import Session
 
-from app import crud, schemas
+from app import crud, schemas, timeutil
 from app.exceptions import (
     FaultNotFoundError,
     InvalidTransitionError,
@@ -72,7 +72,7 @@ def _make_fault(
         schemas.FaultCreate(
             pipeline_id=pipeline_id,
             location="3号工位传送带",
-            occurred_at=datetime.now() - timedelta(minutes=minutes_ago),
+            occurred_at=timeutil.business_now() - timedelta(minutes=minutes_ago),
             symptom=symptom,
         ),
         creator=creator,

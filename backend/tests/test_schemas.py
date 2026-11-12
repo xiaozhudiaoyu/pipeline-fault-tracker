@@ -21,12 +21,18 @@
 #   B5 handling_note（Transition）：strip 后 4 字拒 / 5 字过；纯空格拒；2001 字拒
 #   B6 PipelineCreate code：空串拒 / 1 字过 / 51 字拒
 #   B7 FaultReturnIn.reason：纯空格视同未填拒；strip 后 <2 字拒；合法值 首尾空白剔除后入库
+# 【业务时区】（T1~T3，见 TestBusinessTimezone；回归 backend 容器跑在 UTC 的现场缺陷）
+#   T1 业务时区改成 UTC 后，北京墙钟的 naive“此刻”按业务口径就是未来 → 拒
+#   T2 业务时区为 +08 时，北京墙钟的 naive“此刻”放行，且墙钟原样保留（naive 出口）
+#   T3 aware（+00:00）写法按业务时区归一为北京墙钟
 
 from datetime import datetime, timedelta, timezone
 
 import pytest
 from pydantic import ValidationError
 
+from app import timeutil
+from app.config import settings
 from app.models import FaultStatus
 from app.schemas import FaultCreate, FaultReturnIn, FaultTransition, FaultUpdate, PipelineCreate
 
@@ -36,7 +42,7 @@ def _fault_payload(**overrides):
     data = {
         "pipeline_id": 1,
         "location": "3号工位传送带",
-        "occurred_at": (datetime.now() - timedelta(hours=1)).isoformat(),
+        "occurred_at": (timeutil.business_now() - timedelta(hours=1)).isoformat(),
         "symptom": "传送带异响并卡死",
     }
     data.update(overrides)
@@ -99,7 +105,7 @@ class TestErrorPath:
         assert ("handling_note",) in _error_fields(exc_info.value)
 
     def test_e5_occurred_at_far_future_rejected(self):
-        future = (datetime.now() + timedelta(hours=1)).isoformat()
+        future = (timeutil.business_now() + timedelta(hours=1)).isoformat()
         with pytest.raises(ValidationError) as exc_info:
             FaultCreate(**_fault_payload(occurred_at=future))
         assert ("occurred_at",) in _error_fields(exc_info.value)
@@ -131,7 +137,7 @@ class TestBoundary:
 
     def test_b4_occurred_at_clock_skew_tolerance(self):
         # naive 时态：未来 30s，在 60s 容差内 → 放行
-        naive = datetime.now() + timedelta(seconds=30)
+        naive = timeutil.business_now() + timedelta(seconds=30)
         assert FaultCreate(**_fault_payload(occurred_at=naive.isoformat()))
         # aware 时态（UTC）：未来 30s → 放行；证明 validator 的 aware/naive 换算不炸
         aware = datetime.now(timezone.utc) + timedelta(seconds=30)
@@ -168,3 +174,41 @@ class TestBoundary:
         with pytest.raises(ValidationError):
             FaultReturnIn(reason=" 常 ")                      # strip 后 1 字 < 2
         assert FaultReturnIn(reason=" 未彻底解决 ").reason == "未彻底解决"  # 首尾空白剔除入库
+
+
+# ──【业务时区】────────────────────────────────────────────────────────────
+class TestBusinessTimezone:
+    """T1~T3：occurred_at 的“未来”判定只看【业务时区】，与进程所在机器的时区无关。
+
+    缺陷现场：backend 容器时区是 UTC，前端 date-picker 发的是北京墙钟的 naive 串
+    （value-format="YYYY-MM-DD[T]HH:mm:ss"，无偏移）。旧 validator 用
+    `naive.astimezone()` 解释无偏移输入 —— 该方法按【进程时区】补 tzinfo，容器里即
+    按 UTC 补，于是北京 16:26 被当成 UTC 16:26，比当时（UTC 08:26）晚 8 小时 → 近 8
+    小时内的发生时间一律 422“不得晚于当前时间”。
+
+    本机进程时区恰为 +08:00，两种口径结论相同、复现不出来，故用例把
+    business_utc_offset_hours 显式改成 0 来扮演“部署在 UTC 区域的服务器”，
+    此时旧实现仍按进程时区（+08）判 → 接受 → T1 红。
+    """
+
+    def test_t1_naive_wallclock_read_as_business_tz(self, monkeypatch):
+        # 业务时区=UTC：北京墙钟的“此刻”在业务口径下是未来 8 小时 → 拒
+        monkeypatch.setattr(settings, "business_utc_offset_hours", 0)
+        beijing_wall = datetime.now(timezone(timedelta(hours=8))).replace(tzinfo=None)
+        with pytest.raises(ValidationError) as exc_info:
+            FaultCreate(**_fault_payload(occurred_at=beijing_wall.isoformat()))
+        assert ("occurred_at",) in _error_fields(exc_info.value)
+
+    def test_t2_business_now_wallclock_accepted(self, monkeypatch):
+        # 业务时区=+08：北京墙钟的“此刻”合法，且墙钟不被进程时区二次换算
+        monkeypatch.setattr(settings, "business_utc_offset_hours", 8)
+        beijing_wall = datetime.now(timezone(timedelta(hours=8))).replace(tzinfo=None)
+        fc = FaultCreate(**_fault_payload(occurred_at=beijing_wall.isoformat()))
+        assert fc.occurred_at.tzinfo is None
+        assert abs((fc.occurred_at - beijing_wall).total_seconds()) < 2
+
+    def test_t3_aware_input_normalized_to_business_wallclock(self, monkeypatch):
+        # 同一时刻的 UTC 写法（05:00Z）在 +08 业务时区下归一为北京墙钟 13:00
+        monkeypatch.setattr(settings, "business_utc_offset_hours", 8)
+        fc = FaultCreate(**_fault_payload(occurred_at="2026-11-01T05:00:00+00:00"))
+        assert fc.occurred_at == datetime(2026, 11, 1, 13, 0)

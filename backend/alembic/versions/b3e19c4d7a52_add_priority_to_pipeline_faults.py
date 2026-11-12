@@ -29,8 +29,13 @@ def upgrade() -> None:
     # 需求三.2：旧库升级后"已有故障统一设为普通"，且不得清空/重录数据。
     # 手法：add_column 带 server_default='normal' —— SQLite 与 PG 都允许在
     # NOT NULL 加列时给默认值，存量行由数据库自动回填 'normal'，无需单独 UPDATE。
-    # 列类型与基线风格一致：直接复用 models 的 Enum(FaultPriority)（在 SQLite/PG 上
-    # 均渲染成 VARCHAR、无 CHECK 约束），避免与 compare_type 体检漂移。
+    # 列类型与基线风格一致：直接复用 models 的 Enum(FaultPriority)，避免与 compare_type 体检漂移。
+    # 【PG 坑】对已存在的表 add_column 一个 Enum 列，PG 渲染成原生枚举类型 faultpriority，
+    # 而 alembic 只在 create_table 时自动 CREATE TYPE，add_column 不会——空库跑这条迁移
+    # 直接报 UndefinedObject: type "faultpriority" does not exist（实测）。
+    # SQLite 渲染成 VARCHAR 无此问题，故需方言守卫：PG 先建类型，SQLite 上 skip 为空操作。
+    if op.get_bind().dialect.name == "postgresql":
+        sa.Enum(FaultPriority).create(op.get_bind(), checkfirst=True)
     op.add_column(
         'pipeline_faults',
         sa.Column(
@@ -55,3 +60,6 @@ def downgrade() -> None:
     # 自带的 sqlite3 远高于该版本；PG 原生支持）。优先级是展示维度，回滚丢列即可，
     # 不涉及数据修复 —— 与需求"升级不删数据"不冲突（回滚本身是人工决策操作）。
     op.drop_column('pipeline_faults', 'priority')
+    # PG 上 DROP COLUMN 不会连带删除枚举类型，需显式 DROP TYPE（SQLite 无此类型，skip）。
+    if op.get_bind().dialect.name == "postgresql":
+        sa.Enum(FaultPriority).drop(op.get_bind(), checkfirst=True)

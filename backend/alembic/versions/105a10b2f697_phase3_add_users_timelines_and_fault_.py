@@ -31,6 +31,12 @@ def upgrade() -> None:
         'awaiting_confirmation'(23字) 存入既有 VARCHAR(10) 完全没问题（基线已证实）；
         ORM 层 sa.Enum(FaultStatus) 负责应用级校验，数据库层无 CHECK 约束。
     """
+    # ── 0. 方言开关：布尔列的 server_default 写法 ──────────────────────
+    # 【PG 坑】sa.text('1')/'0' 在 SQLite 上能用（布尔存 0/1），但 PG 报
+    # DatatypeMismatch: column is of type boolean but default is integer（实测）。
+    # PG 渲染成布尔字面量 true/false，SQLite 保持原有 1/0 写法不变。
+    _pg = op.get_bind().dialect.name == "postgresql"
+
     # ── 1. 新建 users 表 ──
     op.create_table('users',
         sa.Column('id', sa.Integer(), autoincrement=True, nullable=False, comment='用户主键'),
@@ -38,7 +44,7 @@ def upgrade() -> None:
         sa.Column('password_hash', sa.String(length=200), nullable=False, comment='bcrypt 哈希值，不保存明文'),
         sa.Column('display_name', sa.String(length=100), nullable=False, comment='显示名称'),
         sa.Column('role', sa.Enum(FaultRole), nullable=False, comment='角色：user/handler/admin'),
-        sa.Column('is_active', sa.Boolean(), nullable=False, server_default=sa.text('1'), comment='账号启用状态'),
+        sa.Column('is_active', sa.Boolean(), nullable=False, server_default=sa.text('true') if _pg else sa.text('1'), comment='账号启用状态'),
         sa.Column('token_version', sa.Integer(), nullable=False, server_default=sa.text('0'), comment='token 版本号'),
         sa.Column('created_at', sa.DateTime(), server_default=sa.text('CURRENT_TIMESTAMP'), nullable=False, comment='账号创建时间'),
         sa.PrimaryKeyConstraint('id'),
@@ -57,7 +63,7 @@ def upgrade() -> None:
         sa.Column('from_assignee_id', sa.Integer(), nullable=True, comment='变更前负责人 ID'),
         sa.Column('to_assignee_id', sa.Integer(), nullable=True, comment='变更后负责人 ID'),
         sa.Column('note', sa.Text(), nullable=True, comment='说明/原因/进展内容'),
-        sa.Column('is_imported', sa.Boolean(), nullable=False, server_default=sa.text('0'), comment='升级时导入标记'),
+        sa.Column('is_imported', sa.Boolean(), nullable=False, server_default=sa.text('false') if _pg else sa.text('0'), comment='升级时导入标记'),
         sa.Column('created_at', sa.DateTime(), server_default=sa.text('CURRENT_TIMESTAMP'), nullable=False, comment='记录创建时间'),
         sa.ForeignKeyConstraint(['fault_id'], ['pipeline_faults.id'], ondelete='CASCADE'),
         sa.ForeignKeyConstraint(['operator_id'], ['users.id'], ondelete='SET NULL'),

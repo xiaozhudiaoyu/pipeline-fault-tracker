@@ -7,12 +7,13 @@
 
 | 层 | 技术 | 版本（实际验证） |
 |---|---|---|
-| 前端框架 | Vue 3 + TypeScript | Vue ^3.4（实测 3.4.38）、TS ^5.3（实测 5.3.3） |
-| 构建工具 | Vite | ^4.5（实测 4.5.14，Node 16 兼容） |
-| 路由 | Vue Router | ^4.2（实测 4.2.5） |
-| 数据请求 | TanStack Query (vue-query) | ^4.36（实测 4.36.2） |
-| 前端校验 | Zod | ^3.22（实测 3.22.5） |
-| UI 组件库 | Element Plus | ^2.5（实测 2.5.6） |
+| 前端框架 | Vue 3 + TypeScript | Vue ~3.4（实测 3.4.38）、TS ~5.3（实测 5.3.3） |
+| 构建工具 | Vite | ~4.5（实测 4.5.14，Node 16 兼容） |
+| 类型检查 | vue-tsc | ~1.8（实测 1.8.27，`npm run type-check`） |
+| 路由 | Vue Router | ~4.2（实测 4.2.5） |
+| 数据请求 | TanStack Query (vue-query) | ~4.36（实测 4.36.2） |
+| 前端校验 | Zod | ~3.22（实测 3.22.5） |
+| UI 组件库 | Element Plus | ~2.5（实测 2.5.6）；图标 `@element-plus/icons-vue` ~2.3.2 |
 | 后端框架 | FastAPI | ≥0.115（实测 0.141.1） |
 | 数据校验 | Pydantic 2 | ≥2.9（实测 2.13.5） |
 | ORM | SQLAlchemy 2 | ≥2.0（实测 2.0.54） |
@@ -39,6 +40,7 @@ pipeline-fault-tracker/
 │   ├── entrypoint.sh         # 容器入口：alembic upgrade head → uvicorn
 │   ├── Dockerfile / .dockerignore
 │   ├── pyproject.toml / uv.lock   # 依赖声明（uv 工作流）
+│   ├── tests/                # pytest 分层回归（接口 / crud / 权限 / 阶段流程）
 │   └── .env.example
 ├── frontend/                 # Vue 3 + TS + Vite + Element Plus
 │   ├── src/{api, components, composables, router, schemas, styles, types, utils, views}
@@ -97,7 +99,7 @@ cd frontend
 # 1. 安装依赖（按锁文件精确复现）
 npm ci
 
-# 2. 复制配置示例
+# 2. 复制配置示例（`.env` 与 `.env.local` 皆可：Vite 两者都读，均被 .gitignore 忽略）
 Copy-Item .env.example .env
 
 # 3. 启动开发服务器（默认 http://127.0.0.1:5173）
@@ -112,7 +114,7 @@ npm run dev
 
 | 角色 | 能做什么 |
 |---|---|
-| 普通用户（user） | 登记故障；查看**本人创建**的故障及时间线；待处理阶段改基本信息/优先级；对本人故障**确认完成**或**退回处理**。 |
+| 普通用户（user） | 登记故障；查看**本人创建**的故障及时间线；待处理阶段改基本信息，完成前可调优先级；对本人故障**确认完成**或**退回处理**。 |
 | 处理人员（handler） | 查看**分派给本人**的故障；**开始处理**、**追加进展**、**提交处理结果**；不得处理他人任务、不得自行分派或自行确认完成。 |
 | 管理员（admin） | 查看全部故障；**指派/改派**负责人（改派须填原因，状态与既有记录不变）；完成前调整优先级；账号新增/启停/重置密码；创建人已停用或旧故障无对应账号时，**填原因后代为确认/退回**。 |
 
@@ -120,11 +122,12 @@ npm run dev
 
 ```
 登记(普通用户)          → pending，创建人自动记为本人，优先级默认普通
-管理员 指派/改派         → 仍是 pending（只设负责人；未指派不能开始）
+管理员 指派/改派         → pending 不变（只设负责人；未指派不能开始；待确认须先退回才能指派/改派，
+                          遗留的「processing 但无负责人」可直接补指派）
 负责人 开始处理          → pending → processing
 负责人 追加进展（可多次） → processing（说明必填非空白）
 负责人 提交处理结果       → processing → awaiting_confirmation（结果说明必填）
-创建人 确认 / 管理员代确认 → awaiting_confirmation → done（写 closed_at）
+创建人 确认 / 管理员代确认 → awaiting_confirmation → done（写 closed_at）；创建人若兼任负责人则不得自行确认
 创建人 退回处理          → awaiting_confirmation → processing（原因必填，负责人不变）
 done 为终态：不可再流转、不可改回；历史记录只读，任何角色都不能删除故障及其历史。
 ```
@@ -145,14 +148,14 @@ done 为终态：不可再流转、不可改回；历史记录只读，任何角
 | PATCH | `/api/users/{id}/active` | 启用/停用（停用即时失效其全部 token；禁止自停） | 管理员 |
 | POST | `/api/users/{id}/reset-password` | 重置密码（被重置者旧 token 全失效） | 管理员 |
 | GET | `/api/pipelines` | 流水线列表（登记/筛选下拉数据源） | 登录 |
-| POST | `/api/pipelines` | 新建流水线（供直接调用/扩展） | 登录 |
+| POST | `/api/pipelines` | 新建流水线（主数据变更影响大，非 admin 403） | 管理员 |
 | GET | `/api/faults` | 故障列表（按角色默认视图 + `pipeline_id`/`status`/`priority`/`assignee_id`/`unassigned` 筛选 + 分页，按发生时间倒序） | 登录（角色过滤） |
 | GET | `/api/faults/export` | 导出 CSV（复用列表筛选口径，含创建人/负责人列，UTF-8 带 BOM） | 登录（角色过滤） |
 | GET | `/api/faults/{id}` | 故障详情 | 归属校验 |
 | POST | `/api/faults` | 登记故障（201 + `Location`；`occurred_at` 不晚于当前、`symptom` 5~1000 字） | 登录 |
-| PATCH | `/api/faults/{id}` | 改基本信息（`location`/`symptom`/`handling_note`；done 后说明锁定） | 归属+状态校验 |
+| PATCH | `/api/faults/{id}` | 改基本信息（只落 `location`/`symptom` 且仅 pending；`handling_note`/`priority` 传了忽略，分别走 `/submit`、`/priority`） | 归属+状态校验 |
 | GET | `/api/faults/{id}/timelines` | 处理时间线（倒序） | 归属校验 |
-| POST | `/api/faults/{id}/assign` | 指派负责人（仅 pending，不改状态） | 管理员 |
+| POST | `/api/faults/{id}/assign` | 指派负责人（须尚无负责人，不改状态；done 与待确认拒绝） | 管理员 |
 | POST | `/api/faults/{id}/reassign` | 改派负责人（原因必填，状态与记录不变） | 管理员 |
 | POST | `/api/faults/{id}/start` | 开始处理：pending → processing | 负责人 |
 | POST | `/api/faults/{id}/progress` | 追加进展：processing 内多次，说明必填非空白 | 负责人 |
@@ -177,13 +180,13 @@ done 为终态：不可再流转、不可改回；历史记录只读，任何角
 | `HOST` / `PORT` / `DB_ECHO` | backend/.env | 监听地址/端口、SQL 回显 | `127.0.0.1` / `8000` / `false` |
 | `SEED_PASSWORD` | backend/.env 或环境变量 | `seed.py` 演示账号统一初始密码（≥6 位，缺账号时才需要） | 无（不给即中止） |
 | `ADMIN_USERNAME` / `ADMIN_PASSWORD` / `ADMIN_DISPLAY_NAME` | backend/.env 或环境变量 | `create_admin.py` 初始管理员账号/密码/显示名 | `admin` / 无 / `系统管理员` |
-| `VITE_API_BASE_URL` | frontend/.env | 前端 API 基址（容器构建留空走同源代理，本地开发指后端） | 空 |
+| `VITE_API_BASE_URL` | frontend/.env | 前端 API 基址（容器构建不设即空，走同源代理；本地开发指后端） | 模板给 `http://127.0.0.1:8000` |
 
 配置文件模板：`backend/.env.example`、`frontend/.env.example`、根目录 `.env.example`。
 
 ## 九、依赖管理
 
-- 后端：`pyproject.toml`（声明，`[project].dependencies`）+ `uv.lock`（锁定，`uv lock` 生成，`uv sync` 复现）。
+- 后端：`pyproject.toml`（声明，`[project].dependencies`）+ `uv.lock`（锁定，`uv lock` 生成，`uv sync` 复现）；测试依赖另置 `[dependency-groups].dev`（pytest、httpx），`uv sync` 默认一并装齐。
 - 前端：`package.json`（声明）+ `package-lock.json`（锁定，`npm install` 生成，`npm ci` 复现）。
 - 变更历史与证据见 [DEPENDENCIES.md](./DEPENDENCIES.md)。
 
@@ -306,9 +309,9 @@ docker compose -f docker-compose.yml -f docker-compose.pg.yml up -d --build
 - `create_admin.py`：临时库 5 场景 18 项断言全绿——缺口令且无账号即中止（零账号写入）、带口令建 `admin`（bcrypt `$2b$` 哈希、明文不入库）、重跑跳过不重置不新增、改密码重跑仍拒改、自定义 `ADMIN_USERNAME` 生效。
 - 空库 `alembic upgrade head`（容器 entrypoint 首启路径）：一路建 `pipelines/pipeline_faults/users/fault_timelines/alembic_version` 五表，版本至 `105a10b2f697`，`pipeline_faults` 含 `priority/created_by_id/assignee_id`。
 - Compose 静态校验：SQLite 主线无 postgres、URL 为 `sqlite:////app/data/…`、卷 `pft-data`；PG 覆盖合并出 `postgres:16-alpine` + 双方言 URL + 双卷；缺 `SECRET_KEY` 被 `${:?}` 拒绝启动。
-- 后端 `uv run pytest` 分层回归（见第十三节前置提交历史）。
+- 后端 `uv run pytest` 分层回归（各层红→绿过程见 git 提交历史）。
 
-**交用户运行态自验（未由 AI 起容器实测）**：干净环境 `docker compose up -d --build` 一条龙、容器重启数据保留、浏览器三账号走通闭环与越权拦截（见验收清单）。
+**交用户运行态自验（未由 AI 起容器实测）**：干净环境 `docker compose up -d --build` 一条龙、容器重启数据保留、浏览器三账号（seed 的 `reporter01` / `handler01` / `admin01`）走通闭环与越权拦截。
 
 **已知问题 / 技术债**：
 

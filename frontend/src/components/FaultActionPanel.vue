@@ -11,7 +11,8 @@
 //   提交 submit   ：当前负责人，processing → 待确认
 //   确认 confirm  ：创建人；创建人不可用（历史数据/已停用）时 admin 代确认（理由必填，SM11）；
 //                   负责人本人任何情形不可自行确认（SM12，后端 403 兜底）
-//   退回 return   ：创建人，待确认（admin 也不能代退回，保守同后端）
+//   退回 return   ：创建人，待确认；创建人不可用（历史数据/已停用）时 admin 代退回（理由必填，需求二.5）。
+//                   与代确认不同：退回方向不排“自己就是负责人”（后端 check_can_return 同样不拦，用户裁定）
 //   优先级 priority：admin 或创建人，done 之前
 //   修改故障信息 edit：admin 或创建人，仅 pending（镜像 crud.update_fault，只改 location/symptom，
 //                   原 FaultEditPanel 内嵌面板随本次改造并入动作对话框）
@@ -75,7 +76,13 @@ const canConfirmByAdmin = computed(
     !isAssignee.value &&
     !creatorUsable.value
 )
-const canReturn = computed(() => s.value === 'awaiting_confirmation' && isCreator.value)
+const canReturnByCreator = computed(() => s.value === 'awaiting_confirmation' && isCreator.value)
+// 管理员代退回：镜像后端 check_can_return 的“仅创建人不可用时”分支。
+// 故意不加 !isAssignee（与上方 canConfirmByAdmin 不同）：负责人把自己提交的故障打回重做，
+// 本就是退回语义本身；后端对两个方向的口径差异见 auth.py check_can_return 的注释。
+const canReturnByAdmin = computed(
+  () => isAdmin.value && s.value === 'awaiting_confirmation' && !creatorUsable.value
+)
 const canPriority = computed(() => (isAdmin.value || isCreator.value) && s.value !== 'done')
 // 修改故障信息（镜像 crud.update_fault）：仅 pending 且（创建人本人 或 admin）
 const canEdit = computed(() => s.value === 'pending' && (isAdmin.value || isCreator.value))
@@ -86,7 +93,7 @@ const hasAnyAction = computed(
   () =>
     canAssign.value || canReassign.value || canStart.value || canProgress.value ||
     canSubmit.value || canConfirmByCreator.value || canConfirmByAdmin.value ||
-    canReturn.value || canPriority.value || canEdit.value
+    canReturnByCreator.value || canReturnByAdmin.value || canPriority.value || canEdit.value
 )
 
 // 当前卡在谁手里（需求四.5"知道当前等待谁操作"）
@@ -103,7 +110,7 @@ const waitingHint = computed(() => {
   if (f.status === 'awaiting_confirmation') {
     return creatorUsable.value
       ? `等待创建人 ${f.created_by?.display_name ?? '（历史数据）'} 确认或退回`
-      : '创建人账号不可用，等待管理员代确认'
+      : '创建人账号不可用，等待管理员代确认或代为退回'
   }
   return '已完成（终态），按业务规则不可再流转'
 })
@@ -150,7 +157,13 @@ const DIALOG_TITLES: Record<DialogName, string> = {
   priority: '调整优先级',
   edit: '修改故障信息',
 }
-const dialogTitle = computed(() => (dialogName.value ? DIALOG_TITLES[dialogName.value] : ''))
+const dialogTitle = computed(() => {
+  const name = dialogName.value
+  if (!name) return ''
+  // 非创建人（即管理员代退）时标题区分开，避免误当作本人验收退回
+  if (name === 'return' && !isCreator.value) return '代为退回'
+  return DIALOG_TITLES[name]
+})
 const showAssigneeSelect = computed(() => dialogName.value === 'assign' || dialogName.value === 'reassign')
 const showText = computed(() =>
   ['reassign', 'progress', 'submit', 'confirm', 'return'].includes(dialogName.value ?? '')
@@ -162,7 +175,12 @@ const TEXT_PLACEHOLDERS: Partial<Record<DialogName, string>> = {
   confirm: '创建人账号不可用，请填写代确认理由（必填，至少 2 个字）',
   return: '请填写退回原因（至少 2 个字）',
 }
-const textPlaceholder = computed(() => (dialogName.value ? TEXT_PLACEHOLDERS[dialogName.value] ?? '' : ''))
+const textPlaceholder = computed(() => {
+  const name = dialogName.value
+  if (!name) return ''
+  if (name === 'return' && !isCreator.value) return '创建人账号不可用，请填写代为退回原因（必填，至少 2 个字）'
+  return TEXT_PLACEHOLDERS[name] ?? ''
+})
 
 // 文本框输入上限按动作取值，与 zod 校验共用 schemas/auth 的 TEXT_LIMITS（单一来源）：
 // 理由类（改派/退回/代确认）后端只收 500 字，进展/结果说明 2000 字。
@@ -336,8 +354,11 @@ const dialogLoading = computed(() => {
       <el-button v-if="canConfirmByAdmin" type="warning" :disabled="anyLoading" @click="openDialog('confirm')">
         代确认完成
       </el-button>
-      <el-button v-if="canReturn" type="danger" plain :disabled="anyLoading" @click="openDialog('return')">
+      <el-button v-if="canReturnByCreator" type="danger" plain :disabled="anyLoading" @click="openDialog('return')">
         退回处理
+      </el-button>
+      <el-button v-if="canReturnByAdmin" type="danger" plain :disabled="anyLoading" @click="openDialog('return')">
+        代为退回
       </el-button>
       <el-button v-if="canPriority" :disabled="anyLoading" @click="openDialog('priority')">调整优先级</el-button>
       <el-button v-if="canEdit" :disabled="anyLoading" @click="openDialog('edit')">修改故障信息</el-button>

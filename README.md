@@ -179,6 +179,7 @@ done 为终态：不可再流转、不可改回；历史记录只读，任何角
 | `ACCESS_TOKEN_EXPIRE_MINUTES` | backend/.env | Token 有效期（分钟） | `720`（12 小时） |
 | `CORS_ORIGINS` | backend/.env | 跨域白名单（逗号分隔；容器同源经 nginx 代理，一般无需改） | 本地 5173 |
 | `HOST` / `PORT` / `DB_ECHO` | backend/.env | 监听地址/端口、SQL 回显 | `127.0.0.1` / `8000` / `false` |
+| `BUSINESS_UTC_OFFSET_HOURS` | backend/.env 或环境变量 | 业务时区（相对 UTC 的整小时偏移）：`occurred_at` 的“不得晚于当前”判定与 `created_at/updated_at/closed_at` 写入均按它算，**与容器/宿主进程时区无关**（口径见 `backend/app/timeutil.py`） | `8`（北京时间） |
 | `SEED_PASSWORD` | backend/.env 或环境变量 | `seed.py` 演示账号统一初始密码（≥6 位，缺账号时才需要） | 无（不给即中止） |
 | `ADMIN_USERNAME` / `ADMIN_PASSWORD` / `ADMIN_DISPLAY_NAME` | backend/.env 或环境变量 | `create_admin.py` 初始管理员账号/密码/显示名 | `admin` / 无 / `系统管理员` |
 | `VITE_API_BASE_URL` | frontend/.env | 前端 API 基址（容器构建不设即空，走同源代理；本地开发指后端） | 模板给 `http://127.0.0.1:8000` |
@@ -345,6 +346,7 @@ rm -rf ~/olddb
 2. **旧 `handling_note` 未导入为 `is_imported=true` 时间线**（`test_phase3_workflow.py` HD2 仍 `xfail`）：当前按需求六.3「单独显示为历史处理说明」一路满足，不影响功能。
 3. **复用旧数据卷的接管限制**：见 10.2 末尾告警——只被 `create_all` 建过表、无 `alembic_version` 的旧卷，容器 `upgrade head` 会撞表，需先 `stamp`。
 4. SQLite 为单文件库，不适合高并发生产；PG 形态为可选升级路径。
+5. **存量数据的系统时间口径混杂**：业务时区口径修复（2026-11-12）前，`created_at/updated_at/closed_at` 写的是【进程时区】墙钟，backend 容器为 UTC → 那批记录比真实北京时间早 8 小时；`occurred_at` 由用户填写、不受影响。开发演示数据按既有裁定**不修补**（如需校正要单独设计数据修复脚本，属不可逆操作）。
 
 ## 十三、已知限制
 

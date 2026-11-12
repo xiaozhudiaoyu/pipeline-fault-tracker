@@ -235,7 +235,7 @@ $env:SEED_PASSWORD="你的演示密码"                   # （可选）演示�
 ```powershell
 cd backend
 # 1. 先备份旧库（升级前必做，回退手段）
-Copy-Item fault_tracker.db ..\process\fault_tracker.db.bak-p3-<日期>
+Copy-Item fault_tracker.db ..\fault_tracker.db.bak-p3-<日期>
 # 2. 打标：告诉 alembic “此库已在加 priority 前的版本”，只写版本号、不动数据
 .venv\Scripts\python.exe -m alembic stamp a74bf448a946
 # 3. 升到最新：仅执行差量（加 priority 列 + 建 users/时间线表 + 故障加两列）

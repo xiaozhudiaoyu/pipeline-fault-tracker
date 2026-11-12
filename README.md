@@ -129,6 +129,7 @@ npm run dev
 负责人 提交处理结果       → processing → awaiting_confirmation（结果说明必填）
 创建人 确认 / 管理员代确认 → awaiting_confirmation → done（写 closed_at）；创建人若兼任负责人则不得自行确认
 创建人 退回处理          → awaiting_confirmation → processing（原因必填，负责人不变）
+管理员 代为退回          → 仅当创建人已停用或旧故障无对应账号（同样必填原因，负责人不变；需求二.5）
 done 为终态：不可再流转、不可改回；历史记录只读，任何角色都不能删除故障及其历史。
 ```
 
@@ -161,7 +162,7 @@ done 为终态：不可再流转、不可改回；历史记录只读，任何角
 | POST | `/api/faults/{id}/progress` | 追加进展：processing 内多次，说明必填非空白 | 负责人 |
 | POST | `/api/faults/{id}/submit` | 提交结果：processing → awaiting_confirmation（结果说明必填） | 负责人 |
 | POST | `/api/faults/{id}/confirm` | 确认完成：awaiting_confirmation → done | 创建人 / 管理员代确认 |
-| POST | `/api/faults/{id}/return` | 退回处理：awaiting_confirmation → processing（原因必填，负责人不变） | 创建人 |
+| POST | `/api/faults/{id}/return` | 退回处理：awaiting_confirmation → processing（原因必填，负责人不变） | 创建人 / 管理员代退回（创建人停用或无对应账号时） |
 | POST | `/api/faults/{id}/priority` | 调整优先级（done 前，状态不变） | 管理员 / 创建人 |
 | GET | `/api/health`、`/` | 健康检查（容器 healthcheck 探活 `/api/health`） | 公开 |
 

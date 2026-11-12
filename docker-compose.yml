@@ -17,6 +17,11 @@ services:
       # 容器内绝对路径（注意 sqlite 四斜杠 //）：库文件落在挂载卷 /app/data 下。
       # database.py 的 ensure_sqlite_dir() 会在建 engine 前兜底 mkdir 父目录。
       DATABASE_URL: sqlite:////app/data/fault_tracker.db
+      # 容器时区对齐业务时区。应用层的时间口径已由 BUSINESS_UTC_OFFSET_HOURS（默认 8 = 北京）
+      # 决定、不再读进程时区（见 app/timeutil.py），本变量管的是容器日志时间戳一类系统级读取，
+      # 两者一致可避免运维对时。python:3.14-slim 自带 tzdata，TZ 直接生效。
+      # 不写这一行应用也不会错：那正是本次时区缺陷的修复目标（容器默认 UTC 曾让“此刻”被误判为未来）。
+      TZ: Asia/Shanghai
       # :? = 未提供 SECRET_KEY 时 compose 直接报错并打印提示，绝不回退到镜像里的开发默认密钥。
       SECRET_KEY: ${SECRET_KEY:?请在仓库根目录 .env 填写 SECRET_KEY（JWT 签名密钥），详见 README「Docker 部署」}
     volumes:

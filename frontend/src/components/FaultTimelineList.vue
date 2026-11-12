@@ -149,6 +149,8 @@ onMounted(async () => {
         :key="entry.id"
         :timestamp="formatDateTime(entry.created_at)"
         placement="top"
+        type="primary"
+        hollow
       >
         <TimelineEntryBody :entry="entry" />
       </el-timeline-item>

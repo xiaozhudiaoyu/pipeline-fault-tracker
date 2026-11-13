@@ -297,13 +297,15 @@ def create_fault(db: Session, data: schemas.FaultCreate, *, creator: User) -> Pi
 def update_fault(
     db: Session, fault_id: int, data: schemas.FaultUpdate, *, viewer: User
 ) -> PipelineFault:
-    """修改故障信息（第三阶段）：pending + (创建人本人 或 admin)，只落 location / symptom。
+    """修改故障信息（第四阶段扩展）：pending + (创建人本人 或 admin)。
 
-    与旧实现的差异：
+    可改字段：location / symptom / occurred_at；并通过 remove_attachment_ids 删除
+    本故障的现场图片（行 + 磁盘文件，硬删、不写时间线）。
       · priority 走 POST /{id}/priority 端点（需时间线记录）；
       · handling_note 由 submit 动作写入，PATCH 通道不再开放；
       · 状态门槛：pending 之外不可改（D6 保守：接手后需先退回）。
-    不删旧 handling_note 锁定异常：旧错误码保留防止测试链射，仅本函数不再触发。
+    删除取“先库后盘”：字段改动与删附件行同一 commit，提交成功后再 unlink 文件
+    （提交前删文件会因回滚留下“库有行、盘无文件”的 404 幻行）。
     """
     fault = get_fault(db, fault_id, viewer)
     if fault.status != FaultStatus.pending:
@@ -311,11 +313,14 @@ def update_fault(
     if viewer.role != FaultRole.admin and fault.created_by_id != viewer.id:
         raise PermissionDeniedError("仅创建人或管理员可修改基本信息，且仅限待处理状态")
     changes = data.model_dump(exclude_unset=True)
-    # 只放行 location / symptom；传了 priority/handling_note 静默忽略（防旧客户端仍递交时造成 500）
-    changes = {k: v for k, v in changes.items() if k in ("location", "symptom")}
-    for field, value in changes.items():
+    # 只放行 location / symptom / occurred_at；传了 priority/handling_note 静默忽略（防旧客户端递交时 500）
+    for field, value in ((k, v) for k, v in changes.items() if k in ("location", "symptom", "occurred_at")):
         setattr(fault, field, value)
+    # 现场图片删除：仅删本故障 timeline_id 为空的附件，其余 id 静默忽略；返回待 unlink 的文件名
+    removed_files = _stage_onsite_attachment_deletions(fault, changes.get("remove_attachment_ids"))
     db.commit()
+    for name in removed_files:
+        (_upload_dir() / name).unlink(missing_ok=True)
     return get_fault(db, fault_id)
 
 
@@ -659,25 +664,27 @@ def _can_view_attachment(viewer: User, attachment: FaultAttachment) -> bool:
     return can_view_fault(viewer, attachment.fault)
 
 
-def delete_attachment(db: Session, attachment_id: int, viewer: User) -> None:
-    """删除附件：镜像 update_fault 权限面（pending + 创建人/admin）→ 删库行 → 删文件。
+def _stage_onsite_attachment_deletions(
+    fault: PipelineFault, ids: list[int] | None
+) -> list[str]:
+    """从本故障的现场图片集合中移除命中 ids 的项，返回其磁盘文件名（供提交后 unlink）。
 
-    顺序取“先库后盘”：库行删失败文件还在（可重试）；若反过来先删文件后库失败，
-    会留下“元数据在、本体无”的 404 幻行。文件不存在不报错（幂等，重复删可接受）。
+    fault.attachments 关系已由 primaryjoin 过滤为“timeline_id IS NULL 的现场图片”，
+    因此从集合移除 = 只动现场图片：时间线附图与非本故障的 id 天然不在集合里 → 自动忽略
+    （防越权/防误删，不报错、保持幂等）。关系配 cascade=delete-orphan，移除会在 commit 时删行；
+    本函数不 commit——由 update_fault 与字段改动一并提交后再 unlink 文件，
+    避免“库删了、盘没删”或回滚后“盘没了、库还在”的不一致。
+    （注：不能用 session.delete——delete-orphan 父集合已加载时，显式 delete 会被 flush 取消；
+    走集合 remove 才符合 ORM 对所有权的既定语义。）
     """
-    attachment = db.get(FaultAttachment, attachment_id)
-    if attachment is None:
-        raise AttachmentNotFoundError(attachment_id)
-    fault = attachment.fault
-    if fault is None:  # FK CASCADE 下理论不可达，防御性兜底
-        raise AttachmentNotFoundError(attachment_id)
-    if fault.status != FaultStatus.pending:
-        raise InvalidTransitionError(current=fault.status.value, target="attachment_delete")
-    if viewer.role != FaultRole.admin and fault.created_by_id != viewer.id:
-        raise PermissionDeniedError("仅创建人或管理员可删除附件，且仅限待处理状态")
-    db.delete(attachment)
-    db.commit()
-    (_upload_dir() / attachment.filename).unlink(missing_ok=True)
+    if not ids:
+        return []
+    wanted = set(ids)
+    targets = [a for a in fault.attachments if a.id in wanted]
+    filenames = [a.filename for a in targets]
+    for a in targets:
+        fault.attachments.remove(a)
+    return filenames
 
 
 # ── 用户（第三阶段）───────────────────────────────────────────────────

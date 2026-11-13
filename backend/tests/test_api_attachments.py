@@ -9,7 +9,8 @@
 #   N2 GET /api/faults/{id}/attachments → 200，含刚上传项
 #   N3 GET /api/attachments/{id} → 200，字节内容与上传一致，Content-Type/Content-Disposition 正确
 #   N4 GET /api/faults/{id} → 详情内嵌 attachments[0]
-#   N5 DELETE /api/attachments/{id} → 204，列表转空，磁盘文件删除
+#   N5 PATCH /api/faults/{id} 携 remove_attachment_ids → 200，现场图片列表转空，磁盘文件删除
+#   N6 PATCH 改 occurred_at → 200（不得晚于当前，口径同登记）；remove 混入他故障/不存在 id 静默忽略
 # 【异常】
 #   E1 上传到不存在故障 → 404 fault_not_found
 #   E2 上传非图片字节 → 422 attachment_format_unsupported
@@ -19,8 +20,8 @@
 #   E6 未登录回放 → 401
 # 【权限】
 #   P1 无查看权的普通用户上传/回放他人故障 → 404（不泄露存在性）
-#   P2 非创建人且非 admin 删除 → 403
-#   P3 已过 pending 删除 → 409
+#   P2 有查看权但非创建人/admin 经 PATCH 删除现场图片 → 403（无副作用）
+#   P3 已过 pending 经 PATCH 删除现场图片 → 409（无副作用）
 #
 # 【时间线附图（第四阶段追加：追加进展/提交结果可附图）】
 #   TN1 负责人 progress → 响应带 timeline_id，向该时间线上传 → 201；/timelines 里该条带附件；
@@ -134,14 +135,15 @@ async def test_n2_n3_list_and_download_roundtrip(client: httpx.AsyncClient):
     assert "inline" in down.headers["content-disposition"]
 
 
-async def test_n5_delete_removes_row_and_file(client: httpx.AsyncClient, _isolate_upload_dir: Path):
+async def test_n5_update_removes_row_and_file(client: httpx.AsyncClient, _isolate_upload_dir: Path):
     pid = await _seed_pipeline(client)
     fid = await _seed_fault(client, pid)
     att_id = (await _upload(client, fid, PNG_BYTES)).json()["id"]
     assert len(list(_isolate_upload_dir.iterdir())) == 1
 
-    dele = await client.delete(f"/api/attachments/{att_id}")
-    assert dele.status_code == 204
+    # 现场图片删除改由「修改故障信息」触发：PATCH 携 remove_attachment_ids（client 默认 admin）
+    resp = await client.patch(f"/api/faults/{fid}", json={"remove_attachment_ids": [att_id]})
+    assert resp.status_code == 200, resp.text
     assert list(_isolate_upload_dir.iterdir()) == []  # 磁盘文件已删
 
     after = await client.get(f"/api/faults/{fid}/attachments")
@@ -217,22 +219,29 @@ async def test_p1_stranger_cannot_upload_or_download(client: httpx.AsyncClient, 
     assert down.status_code == 404
 
 
-async def test_p2_non_owner_delete_forbidden(client: httpx.AsyncClient, login_as, creator_user):
+async def test_p2_non_owner_update_remove_forbidden(
+    client: httpx.AsyncClient, login_as, handler_user
+):
+    # admin 建故障并上传现场图片，指派 handler_user：handler 有查看权但非创建人、非 admin。
+    # 删除已收敛到 update_fault，权限门槛沿用编辑面（pending + 创建人/admin）→ 403，无副作用。
     pid = await _seed_pipeline(client)
     fid = await _seed_fault(client, pid)
     att_id = (await _upload(client, fid, PNG_BYTES)).json()["id"]
+    assign = await client.post(f"/api/faults/{fid}/assign", json={"assignee_id": handler_user.id})
+    assert assign.status_code == 200
 
-    login_as(creator_user)  # 普通用户既非创建人亦非 admin
-    resp = await client.delete(f"/api/attachments/{att_id}")
+    login_as(handler_user)
+    resp = await client.patch(f"/api/faults/{fid}", json={"remove_attachment_ids": [att_id]})
     assert resp.status_code == 403
+    still = await client.get(f"/api/faults/{fid}/attachments")  # handler 可看：附件仍在
+    assert [a["id"] for a in still.json()] == [att_id]
 
 
-async def test_p3_delete_after_pending_conflict(
+async def test_p3_update_remove_after_pending_conflict(
     client: httpx.AsyncClient, login_as, admin_user, handler_user
 ):
     # admin 建故障并上传，指派 handler 并开始处理（→ processing）。
-    # 删除权限面镜像 update_fault：先过状态门槛（非 pending → 409）再判归属。
-    # 用具备删除权限的 admin 视角验证“过 pending → 409”，隔离掉权限维度。
+    # 删除走 update_fault：先过状态门槛（非 pending → 409），admin 有编辑权也照样被拦，且不产生副作用。
     pid = await _seed_pipeline(client)
     fid = await _seed_fault(client, pid)
     att_id = (await _upload(client, fid, PNG_BYTES)).json()["id"]
@@ -242,15 +251,70 @@ async def test_p3_delete_after_pending_conflict(
     login_as(handler_user)
     assert (await client.post(f"/api/faults/{fid}/start")).status_code == 200
 
-    # client fixture 初始即 admin，上面 login_as 已切走，显式复位到 admin（同一 admin_user 实例）。
-    login_as(admin_user)
-    resp = await client.delete(f"/api/attachments/{att_id}")
+    login_as(admin_user)  # client 初始即 admin，上面 login_as 已切走，显式复位
+    resp = await client.patch(f"/api/faults/{fid}", json={"remove_attachment_ids": [att_id]})
     assert resp.status_code == 409
     _assert_error_shape(resp.json(), "invalid_transition")
 
-    # 409 属拒绝、不产生副作用：附件行与磁盘文件均应还在。
     still = await client.get(f"/api/faults/{fid}/attachments")
     assert [a["id"] for a in still.json()] == [att_id]
+
+
+# ── 修改故障信息：删现场图片 / 改发生时间（第四阶段扩展）──────────
+async def test_u1_remove_ignores_foreign_and_unknown_ids(
+    client: httpx.AsyncClient, _isolate_upload_dir: Path
+):
+    # remove_attachment_ids 混入「他故障的现场图片 id」与一个不存在的 id：均静默忽略，
+    # 只有属于本故障的现场图片才会被删（防越权删他故障附件、防 500）。
+    pid = await _seed_pipeline(client)
+    fid_a = await _seed_fault(client, pid)
+    fid_b = await _seed_fault(client, pid)
+    att_a = (await _upload(client, fid_a, PNG_BYTES)).json()["id"]
+    att_b = (await _upload(client, fid_b, PNG_BYTES)).json()["id"]
+
+    resp = await client.patch(f"/api/faults/{fid_a}", json={"remove_attachment_ids": [att_b, 999999]})
+    assert resp.status_code == 200, resp.text
+    assert [a["id"] for a in (await client.get(f"/api/faults/{fid_a}/attachments")).json()] == [att_a]
+    assert [a["id"] for a in (await client.get(f"/api/faults/{fid_b}/attachments")).json()] == [att_b]
+    assert len(list(_isolate_upload_dir.iterdir())) == 2  # 两张文件都未误删
+
+    # 传本故障自己的 id 才真正生效（确认过滤不是“永远不删”）
+    ok = await client.patch(f"/api/faults/{fid_a}", json={"remove_attachment_ids": [att_a]})
+    assert ok.status_code == 200
+    assert (await client.get(f"/api/faults/{fid_a}/attachments")).json() == []
+
+
+async def test_u2_update_occurred_at_ok(client: httpx.AsyncClient):
+    pid = await _seed_pipeline(client)
+    fid = await _seed_fault(client, pid)
+    past = timeutil.business_now() - timedelta(days=2)
+
+    resp = await client.patch(f"/api/faults/{fid}", json={"occurred_at": past.isoformat()})
+    assert resp.status_code == 200, resp.text
+    detail = await client.get(f"/api/faults/{fid}")
+    assert detail.json()["occurred_at"][:10] == past.date().isoformat()
+
+
+async def test_u3_update_occurred_at_future_422(client: httpx.AsyncClient):
+    pid = await _seed_pipeline(client)
+    fid = await _seed_fault(client, pid)
+    future = (timeutil.business_now() + timedelta(hours=1)).isoformat()
+    resp = await client.patch(f"/api/faults/{fid}", json={"occurred_at": future})
+    assert resp.status_code == 422
+    _assert_error_shape(resp.json(), "validation_error")
+    assert any(d["field"] == "occurred_at" for d in resp.json()["details"])
+
+
+async def test_u4_update_occurred_at_explicit_null_422(client: httpx.AsyncClient):
+    pid = await _seed_pipeline(client)
+    fid = await _seed_fault(client, pid)
+    before = (await client.get(f"/api/faults/{fid}")).json()["occurred_at"]
+    resp = await client.patch(f"/api/faults/{fid}", json={"occurred_at": None})
+    assert resp.status_code == 422
+    assert resp.json()["code"] == "validation_error"
+    # 显式 null 被拒后数据不变
+    after = (await client.get(f"/api/faults/{fid}")).json()["occurred_at"]
+    assert after == before
 
 
 # ── 时间线附图（第四阶段追加）─────────────────────────────────────

@@ -5,10 +5,11 @@
 #   POST   /api/timelines/{timeline_id}/attachments  向时间线附图（进展/提交，第四阶段追加）
 #   GET    /api/faults/{fault_id}/attachments   附件列表（FaultOut.attachments 已内嵌，此端点备用）
 #   GET    /api/attachments/{attachment_id}     文件回放（FileResponse，inline 展示）
-#   DELETE /api/attachments/{attachment_id}     删除附件（pending + 创建人/admin，204）
 #
 # 权限口径（方案已定）：上传/列表/回放 = can_view_fault（crud 层裁决，无权与不存在
-# 同为 404）；删除 = 镜像 update_fault 权限面。路由层保持"薄"，不做二次判断。
+# 同为 404）。第四阶段调整：现场图片删除不再有独立 DELETE 端点，改由「修改故障信息」
+# （PATCH /api/faults/{id} 携 remove_attachment_ids）执行，权限/状态门槛收敛到 update_fault。
+# 路由层保持"薄"，不做二次判断。
 #
 # 注意：main.py 必须先于 faults 路由器注册本 router——Starlette 按注册顺序逐个
 # 匹配路径模板，附件路由排在前面可确保 /api/faults/{fid}/attachments 优先命中这里
@@ -123,19 +124,3 @@ def download_attachment(
             "Cache-Control": "private, max-age=3600",
         },
     )
-
-
-@router.delete(
-    "/api/attachments/{attachment_id}",
-    status_code=204,
-    responses={
-        403: {"model": schemas.ErrorOut, "description": "非创建人且非管理员"},
-        404: {"model": schemas.ErrorOut, "description": "附件不存在或无权查看"},
-        409: {"model": schemas.ErrorOut, "description": "故障已过 pending，附件锁定"},
-    },
-)
-def delete_attachment(
-    attachment_id: int, user: CurrentUser, db: Session = Depends(get_db)
-) -> None:
-    """删除附件：先删元数据行再删磁盘文件（crud 层裁决权限与顺序）。"""
-    crud.delete_attachment(db, attachment_id, user)

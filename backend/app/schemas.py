@@ -208,8 +208,8 @@ class FaultUpdate(BaseModel):
     """PATCH /api/faults/{id} 的请求体：修改故障基础信息（不含状态流转）。
 
     全部字段可选，只改"传了的"（crud 层用 model_dump(exclude_unset=True) 区分
-    "没传"与"传了 null"）。状态流转仍走 /transition 端点，两处规则不重叠。
-    业务规则：done 后 handling_note 锁定不可再改（crud 层校验 → 409）。
+    "没传"与"传了 null"）。第四阶段扩展：可改 location / symptom / occurred_at，并通过
+    remove_attachment_ids 删除现场图片（硬删、不写时间线）；priority/handling_note 仍不在本通道生效。
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -227,6 +227,11 @@ class FaultUpdate(BaseModel):
         max_length=1000,
         description="故障现象描述，5~1000 字；不接受显式 null（不传即不改）",
     )
+    # 第四阶段扩展：发生时间可改，口径同 FaultCreate（业务时区归一 + 不得晚于当前）。
+    occurred_at: datetime | None = Field(
+        default=None,
+        description="故障发生时间（业务时间，ISO 8601）；不传即不改，不接受显式 null，不得晚于当前时间",
+    )
     # 修改优先级与状态流转是两个端点：这里改 priority 不会碰 status（crud 只应用传了的字段）。
     priority: FaultPriority | None = Field(
         default=None,
@@ -237,6 +242,12 @@ class FaultUpdate(BaseModel):
         min_length=5,
         max_length=2000,
         description="处理说明，不少于 5 字；不接受显式 null（不支持清空）；done 后不可再改（crud 层校验）",
+    )
+    # 第四阶段扩展：现场图片改由「修改故障信息」删除——传要删的附件 id 列表，
+    # crud 仅删本故障且 timeline_id 为空的现场图片（时间线附图与非本故障 id 静默忽略）。
+    remove_attachment_ids: list[int] | None = Field(
+        default=None,
+        description="本次要删除的现场图片附件 id 列表；不传即不删，非现场图片/非本故障的 id 被忽略",
     )
 
     # 下面几个 validator 拦的两类真实缺陷（需求五.2）：字段级约束作用在未 strip 的原值
@@ -257,6 +268,18 @@ class FaultUpdate(BaseModel):
         if v is None:
             raise ValueError("symptom 不支持显式置空，不传即不修改")
         return _strip_required(v, 5, "故障现象描述")
+
+    @field_validator("occurred_at")
+    @classmethod
+    def _occurred_at_valid(cls, v: datetime | None) -> datetime | None:
+        """改发生时间：不接受显式 null（不传即不改），并沿用登记口径——
+        归一到业务时区 naive 墙钟后不得晚于当前（容忍 60s 时钟偏移），与 FaultCreate 一致。"""
+        if v is None:
+            raise ValueError("occurred_at 不支持显式置空，不传即不修改")
+        wall = timeutil.to_business_naive(v)
+        if wall > timeutil.business_now() + timedelta(seconds=60):
+            raise ValueError("故障发生时间不得晚于当前时间")
+        return wall
 
     @field_validator("priority")
     @classmethod

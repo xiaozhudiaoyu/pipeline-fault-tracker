@@ -17,6 +17,9 @@ services:
       # 容器内绝对路径（注意 sqlite 四斜杠 //）：库文件落在挂载卷 /app/data 下。
       # database.py 的 ensure_sqlite_dir() 会在建 engine 前兜底 mkdir 父目录。
       DATABASE_URL: sqlite:////app/data/fault_tracker.db
+      # 图片附件目录（第四阶段）：落既有 pft-data 卷的 /app/data/uploads，与库文件同卷、
+      # 备份/迁移一并覆盖，不加新卷。crud 写盘前 mkdir(parents=True) 兜底，无需预建。
+      UPLOAD_DIR: /app/data/uploads
       # 容器时区对齐业务时区。应用层的时间口径已由 BUSINESS_UTC_OFFSET_HOURS（默认 8 = 北京）
       # 决定、不再读进程时区（见 app/timeutil.py），本变量管的是容器日志时间戳一类系统级读取，
       # 两者一致可避免运维对时。python:3.14-slim 自带 tzdata，TZ 直接生效。

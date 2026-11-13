@@ -33,6 +33,9 @@ services:
       # 覆盖主文件的 SQLite URL：scheme 换成 postgresql+psycopg 即驱动 SQLAlchemy 走 psycopg。
       # host 用 compose 服务名 postgres（同网络内 DNS 解析），端口 5432。
       DATABASE_URL: postgresql+psycopg://pft:pft_pass@postgres:5432/pft
+      # 图片附件目录 UPLOAD_DIR=/app/data/uploads 不在此重写：环境映射按键合并，
+      # 主 docker-compose.yml 的同名变量自动继承。本形态下库已迁入 postgres 容器（pft-pgdata），
+      # pft-data 卷剩下的唯一用途就是这份 uploads——备份口径：PG 转储 + uploads 目录两处（见 README 11.5）。
     depends_on:
       # 追加对 postgres 的依赖：等 PG 健康再起 backend，否则 backend entrypoint 迁移即连库会失败。
       postgres:

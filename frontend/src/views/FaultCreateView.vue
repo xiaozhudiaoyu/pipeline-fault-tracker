@@ -1,13 +1,17 @@
 <script setup lang="ts">
 // 故障登记页：表单 + Zod 前端校验 + 提交（防重提）+ 成功跳转详情。
 // 后端仍是最终裁判（非法输入返回 422/404），前端校验只为即时反馈、减少无效请求（规则 3.4）。
-import { reactive } from 'vue'
+// 第四阶段：新增现场图片上传——先本地暂存（auto-upload=false），登记成功拿到 fault.id 后逐张上传。
+import { reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { Back } from '@element-plus/icons-vue'
+import { Back, Plus } from '@element-plus/icons-vue'
+import { ElMessage } from 'element-plus'
+import type { UploadFile, UploadUserFile } from 'element-plus'
 
-import { useFaultMutations } from '../composables/useFaultMutations'
+import { useFaultMutations, toUserMessage } from '../composables/useFaultMutations'
 import { usePipelines } from '../composables/usePipelines'
-import { faultCreateSchema, FAULT_TEXT_LIMITS } from '../schemas/fault'
+import { uploadAttachment } from '../api/attachments'
+import { faultCreateSchema, FAULT_TEXT_LIMITS, FAULT_ATTACHMENT_LIMITS } from '../schemas/fault'
 import { FAULT_PRIORITY_OPTIONS } from '../types/fault'
 import type { FaultCreatePayload, FaultPriority } from '../types/fault'
 
@@ -33,11 +37,51 @@ const form = reactive<{
   priority: 'normal',
 })
 
+// 现场图片：auto-upload=false 下 el-upload 只把选中文件暂存进本列表（每项 .raw 是原生 File），
+// 提交登记成功后才逐张上传。上限与后端同源（FAULT_ATTACHMENT_LIMITS），类型最终以后端文件头判定为准。
+const fileList = ref<UploadUserFile[]>([])
+
+function onFileChange(file: UploadFile) {
+  // 即时校验（减少无效上传请求）：体积、MIME。不合格的从列表移除并提示。
+  // 注意：这不能替代后端 magic bytes 校验，伪装扩展名的文件后端仍会 422 拦下。
+  const raw = file.raw
+  if (!raw) return
+  if (raw.size > FAULT_ATTACHMENT_LIMITS.maxBytes) {
+    ElMessage.warning(`「${file.name}」超过 ${FAULT_ATTACHMENT_LIMITS.maxBytes / 1024 / 1024}MB，已移除`)
+    removeFile(file.uid)
+  } else if (!/^image\/(png|jpe?g)$/.test(raw.type)) {
+    ElMessage.warning(`「${file.name}」不是 PNG/JPEG，已移除`)
+    removeFile(file.uid)
+  }
+}
+
+function removeFile(uid: number) {
+  fileList.value = fileList.value.filter((f) => f.uid !== uid)
+}
+
 // 字段级错误：Zod 校验失败时填充，绑定到对应 el-form-item 的 error 属性（红字提示）。
 const fieldErrors = reactive<Record<string, string>>({})
 
 function clearErrors() {
   for (const key of Object.keys(fieldErrors)) delete fieldErrors[key]
+}
+
+// 登记成功后逐张上传暂存图片。任一张失败仅提示、不回滚故障记录（附件是补充信息，非登记必要条件）。
+async function uploadStaged(faultId: number) {
+  // el-upload 暂存项的 .raw 是 UploadRawFile（File & { uid }）；用 flatMap 滤掉 undefined，
+  // 得到 UploadRawFile[]（可直接当 File 传给 uploadAttachment），避开类型谓词与 File 的兼容问题。
+  const files = fileList.value.flatMap((f) => (f.raw ? [f.raw] : []))
+  if (files.length === 0) return
+  let ok = 0
+  for (const file of files) {
+    try {
+      await uploadAttachment(faultId, file)
+      ok += 1
+    } catch (err) {
+      ElMessage.error(`图片「${file.name}」上传失败：${toUserMessage(err)}`)
+    }
+  }
+  if (ok < files.length) ElMessage.warning(`现场图片 ${ok}/${files.length} 张上传成功`)
 }
 
 function onSubmit() {
@@ -54,8 +98,9 @@ function onSubmit() {
   // 防重提：mutate 期间 submitting 为 true，按钮 loading + disabled，重复点击无效。
   const payload: FaultCreatePayload = result.data
   create.mutate(payload, {
-    onSuccess: (fault) => {
-      // 登记成功 → 跳转到该故障详情页（成功 toast 与列表刷新已在 useFaultMutations 内统一处理）
+    onSuccess: async (fault) => {
+      // 先补传现场图片（若选了），再跳详情（成功 toast 与列表刷新已在 useFaultMutations 内统一处理）
+      await uploadStaged(fault.id)
       router.push({ name: 'fault-detail', params: { id: String(fault.id) } })
     },
   })
@@ -67,6 +112,7 @@ function onReset() {
   form.occurred_at = ''
   form.symptom = ''
   form.priority = 'normal'
+  fileList.value = []
   clearErrors()
 }
 </script>
@@ -136,6 +182,26 @@ function onReset() {
         </el-radio-group>
       </el-form-item>
 
+      <el-form-item label="现场图片">
+        <!-- 暂存式上传：auto-upload=false 只选不传，提交登记成功后才逐张 POST。
+             限制与后端同源：张数 limit、体积/MIME 靠 on-change 拦截；accept 仅供文件选择器过滤。 -->
+        <el-upload
+          v-model:file-list="fileList"
+          list-type="picture-card"
+          :auto-upload="false"
+          :limit="FAULT_ATTACHMENT_LIMITS.maxPerFault"
+          :accept="FAULT_ATTACHMENT_LIMITS.accept"
+          :on-change="onFileChange"
+        >
+          <el-icon><Plus /></el-icon>
+        </el-upload>
+        <div class="upload-hint">
+          选填，最多 {{ FAULT_ATTACHMENT_LIMITS.maxPerFault }} 张，单张≤{{
+            FAULT_ATTACHMENT_LIMITS.maxBytes / 1024 / 1024
+          }}MB，仅 PNG / JPEG
+        </div>
+      </el-form-item>
+
       <el-form-item>
         <el-button type="primary" :loading="submitting" @click="onSubmit">提交登记</el-button>
         <el-button :disabled="submitting" @click="onReset">重置</el-button>
@@ -167,5 +233,12 @@ function onReset() {
 }
 .form-control {
   width: 100%;
+}
+.upload-hint {
+  width: 100%;
+  margin-top: 4px;
+  /* 辅助说明文字：全局字阶 L4，弱化色 */
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
 }
 </style>

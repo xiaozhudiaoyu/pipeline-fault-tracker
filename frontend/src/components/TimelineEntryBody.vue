@@ -9,6 +9,7 @@
 import { FAULT_STATUS_META } from '../types/fault'
 import { TIMELINE_ACTION_LABELS } from '../types/timeline'
 import type { TimelineEntry } from '../types/timeline'
+import TimelineAttachmentThumbs from './TimelineAttachmentThumbs.vue'
 
 defineProps<{ entry: TimelineEntry }>()
 
@@ -51,6 +52,9 @@ function assigneeLabel(name: string | null): string {
     </p>
 
     <p v-if="entry.note" class="entry-note">{{ entry.note }}</p>
+
+    <!-- 随附图片（第四阶段追加：进展/提交附图）：只读缩略图，无附图时组件自身不渲染 -->
+    <TimelineAttachmentThumbs :attachments="entry.attachments ?? []" />
   </div>
 </template>
 

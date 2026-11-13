@@ -11,6 +11,7 @@ import { useMutation, useQueryClient } from '@tanstack/vue-query'
 import { ElMessage } from 'element-plus'
 
 import { ApiError } from '../api/client'
+import { uploadTimelineAttachment } from '../api/attachments'
 import {
   addProgress,
   assignFault,
@@ -81,6 +82,26 @@ export function useFaultMutations() {
 // ── 闭环动作 mutations（详情页 FaultActionPanel 使用）─────────────────
 // 每个动作一个变量类型：面板调用时统一传 faultId（无附加参数的动作只传 id）。
 
+// 时间线附图两步式上传：动作已拿回 timeline_id 后，把面板随附的图片逐张上传到该时间线。
+// 单张失败不阻断其余、也不让整个动作失败（图片本体失败不回滚已记录的进展/结果）；
+// 全部失败不提示（用户可从时间线重看），部分失败给一条汇总提醒。本函数在 mutationFn 内
+// 于成功回调之前执行，因此 base 的 invalidateQueries(['fault-timelines']) 重拉时附图已落库。
+async function uploadTimelineImages(timelineId: number, files?: File[]): Promise<void> {
+  if (!files || files.length === 0) return
+  let ok = 0
+  for (const file of files) {
+    try {
+      await uploadTimelineAttachment(timelineId, file)
+      ok += 1
+    } catch (err) {
+      ElMessage.error(`图片「${file.name}」上传失败：${toUserMessage(err)}`)
+    }
+  }
+  if (ok > 0 && ok < files.length) {
+    ElMessage.warning(`时间线图片 ${ok}/${files.length} 张上传成功`)
+  }
+}
+
 // 8 个动作共用的成功后处理：详情写回 + 列表失效 + 时间线失效（动作必产时间线，需求四.2 同事务）。
 function useActionBase<V>(fn: (vars: V) => Promise<Fault>, successText: string) {
   const queryClient = useQueryClient()
@@ -116,14 +137,22 @@ export function useFaultActions() {
     ),
     // 开始处理（负责人）：pending → processing
     start: useActionBase<number>((id) => startFault(id), '已开始处理'),
-    // 追加进展（负责人）：processing 内多次
-    progress: useActionBase<{ id: number; note: string }>(
-      ({ id, note }) => addProgress(id, note),
+    // 追加进展（负责人）：processing 内多次；可随附图片（第二步拿 timeline_id 上传）。
+    progress: useActionBase<{ id: number; note: string; files?: File[] }>(
+      async ({ id, note, files }) => {
+        const res = await addProgress(id, note)
+        await uploadTimelineImages(res.timeline_id, files)
+        return res
+      },
       '进展已记录',
     ),
-    // 提交处理结果（负责人）：processing → awaiting_confirmation
-    submit: useActionBase<{ id: number; resultNote: string }>(
-      ({ id, resultNote }) => submitFault(id, resultNote),
+    // 提交处理结果（负责人）：processing → awaiting_confirmation；同样支持附图。
+    submit: useActionBase<{ id: number; resultNote: string; files?: File[] }>(
+      async ({ id, resultNote, files }) => {
+        const res = await submitFault(id, resultNote)
+        await uploadTimelineImages(res.timeline_id, files)
+        return res
+      },
       '处理结果已提交，等待创建人确认',
     ),
     // 确认完成（创建人 / admin 代确认）：→ done

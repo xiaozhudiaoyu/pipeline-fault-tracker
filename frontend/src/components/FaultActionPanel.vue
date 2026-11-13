@@ -20,13 +20,15 @@
 // 防重复点击（需求四.5）：任一动作提交中禁用全部按钮；对话框动作确定按钮同口径 loading。
 import { computed, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
+import { Plus } from '@element-plus/icons-vue'
+import type { UploadFile, UploadUserFile } from 'element-plus'
 
 import FaultFlowSteps from './FaultFlowSteps.vue'
 import { useFaultActions, useFaultMutations } from '../composables/useFaultMutations'
 import { useUsers } from '../composables/useUsers'
 import { isAdmin, currentUser } from '../composables/useAuth'
 import { progressNoteSchema, reasonSchema, resultNoteSchema, TEXT_LIMITS } from '../schemas/auth'
-import { faultUpdateSchema, FAULT_TEXT_LIMITS } from '../schemas/fault'
+import { faultUpdateSchema, FAULT_TEXT_LIMITS, FAULT_ATTACHMENT_LIMITS } from '../schemas/fault'
 import { FAULT_PRIORITY_OPTIONS, FAULT_STATUS_META } from '../types/fault'
 import type { Fault, FaultPriority, FaultUpdatePayload } from '../types/fault'
 
@@ -147,6 +149,32 @@ function clearFieldErrors() {
   for (const key of Object.keys(fieldErrors)) delete fieldErrors[key]
 }
 
+// 进展/提交结果随附图片（第四阶段追加）：auto-upload=false 只本地暂存，动作 JSON 成功
+// 拿到 timeline_id 后由 useFaultMutations 逐张上传（失败不回滚已记录的进展/结果）。仅这两个对话框开放。
+const dialogFiles = ref<UploadUserFile[]>([])
+const showImageUpload = computed(
+  () => dialogName.value === 'progress' || dialogName.value === 'submit',
+)
+function removeDialogFile(uid: number) {
+  dialogFiles.value = dialogFiles.value.filter((f) => f.uid !== uid)
+}
+// 即时拦截体积/MIME（与 FaultCreateView 同源，不代替后端 magic bytes 判定）。
+function onDialogFileChange(file: UploadFile) {
+  const raw = file.raw
+  if (!raw) return
+  if (raw.size > FAULT_ATTACHMENT_LIMITS.maxBytes) {
+    ElMessage.warning(`「${file.name}」超过 ${FAULT_ATTACHMENT_LIMITS.maxBytes / 1024 / 1024}MB，已移除`)
+    removeDialogFile(file.uid)
+  } else if (!/^image\/(png|jpe?g)$/.test(raw.type)) {
+    ElMessage.warning(`「${file.name}」不是 PNG/JPEG，已移除`)
+    removeDialogFile(file.uid)
+  }
+}
+// el-upload 暂存项 .raw 是 UploadRawFile（File & { uid }）；flatMap 滤掉 undefined 得可直接上传的 File[]。
+function stagedFiles(): File[] {
+  return dialogFiles.value.flatMap((f) => (f.raw ? [f.raw] : []))
+}
+
 const DIALOG_TITLES: Record<DialogName, string> = {
   assign: '指派负责人',
   reassign: '改派负责人',
@@ -209,6 +237,7 @@ function openDialog(name: DialogName) {
   dialogForm.assigneeId = undefined
   dialogForm.text = ''
   dialogForm.priority = props.fault.priority
+  dialogFiles.value = [] // 重开对话框不残留上次暂存的图片
   // 修改故障信息：预填当前值（同原 FaultEditPanel 的 startEdit）
   if (name === 'edit') {
     dialogForm.location = props.fault.location
@@ -287,8 +316,8 @@ function onDialogConfirm() {
   const done = () => closeDialog()
   if (name === 'assign') actions.assign.mutate({ id, assigneeId: assigneeId! }, { onSuccess: done })
   else if (name === 'reassign') actions.reassign.mutate({ id, assigneeId: assigneeId!, reason: text }, { onSuccess: done })
-  else if (name === 'progress') actions.progress.mutate({ id, note: text }, { onSuccess: done })
-  else if (name === 'submit') actions.submit.mutate({ id, resultNote: text }, { onSuccess: done })
+  else if (name === 'progress') actions.progress.mutate({ id, note: text, files: stagedFiles() }, { onSuccess: done })
+  else if (name === 'submit') actions.submit.mutate({ id, resultNote: text, files: stagedFiles() }, { onSuccess: done })
   else if (name === 'confirm') actions.confirm.mutate({ id, reason: text }, { onSuccess: done })
   else if (name === 'return') actions.return.mutate({ id, reason: text }, { onSuccess: done })
   else if (name === 'priority') actions.priority.mutate({ id, priority: dialogForm.priority }, { onSuccess: done })
@@ -399,6 +428,25 @@ const dialogLoading = computed(() => {
           />
         </el-form-item>
 
+        <!-- 进展/提交结果随附图片（第四阶段追加）：暂存不即时上传，动作成功后逐张 POST 到本条时间线 -->
+        <el-form-item v-if="showImageUpload" label="随附图片">
+          <el-upload
+            v-model:file-list="dialogFiles"
+            list-type="picture-card"
+            :auto-upload="false"
+            :limit="FAULT_ATTACHMENT_LIMITS.maxPerFault"
+            :accept="FAULT_ATTACHMENT_LIMITS.accept"
+            :on-change="onDialogFileChange"
+          >
+            <el-icon><Plus /></el-icon>
+          </el-upload>
+          <div class="upload-hint">
+            选填，最多 {{ FAULT_ATTACHMENT_LIMITS.maxPerFault }} 张，单张≤{{
+              FAULT_ATTACHMENT_LIMITS.maxBytes / 1024 / 1024
+            }}MB，仅 PNG / JPEG
+          </div>
+        </el-form-item>
+
         <el-form-item v-if="dialogName === 'priority'" label="目标优先级">
           <!-- 本机 element-plus 2.5.6 的 el-radio 只有 label prop（value prop 自 2.6 才引入，已核源码） -->
           <el-radio-group v-model="dialogForm.priority">
@@ -472,5 +520,10 @@ const dialogLoading = computed(() => {
 }
 .dialog-control {
   width: 100%;
+}
+.upload-hint {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--el-text-color-secondary, #909399);
 }
 </style>

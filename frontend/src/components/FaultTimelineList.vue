@@ -71,6 +71,7 @@ const synthEntries = computed<TimelineEntry[]>(() => {
     note,
     is_imported: true,
     created_at: createdAt,
+    attachments: [], // 合成记录不挂图（真实附图只属于真实时间线行）
   })
   const list: TimelineEntry[] = []
   if (!hasRealAction('create')) list.push(shell(-f.id * 10 - 1, 'create', f.created_at, null))

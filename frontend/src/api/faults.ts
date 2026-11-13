@@ -5,6 +5,7 @@ import { request } from './client'
 import { getToken } from '../utils/token'
 import type {
   Fault,
+  FaultActionResult,
   FaultCreatePayload,
   FaultList,
   FaultListParams,
@@ -61,14 +62,14 @@ export function startFault(id: number): Promise<Fault> {
 }
 
 // POST /{id}/progress —— 追加进展（当前负责人）：processing 内多次，状态不变，note 必填（≥2 字）。
-export function addProgress(id: number, note: string): Promise<Fault> {
-  return request<Fault>(`/api/faults/${id}/progress`, { method: 'POST', body: { note } })
+export function addProgress(id: number, note: string): Promise<FaultActionResult> {
+  return request<FaultActionResult>(`/api/faults/${id}/progress`, { method: 'POST', body: { note } })
 }
 
 // POST /{id}/submit —— 提交处理结果（当前负责人）：processing → awaiting_confirmation，
 // result_note（≥5 字）同时落 handling_note。
-export function submitFault(id: number, resultNote: string): Promise<Fault> {
-  return request<Fault>(`/api/faults/${id}/submit`, { method: 'POST', body: { result_note: resultNote } })
+export function submitFault(id: number, resultNote: string): Promise<FaultActionResult> {
+  return request<FaultActionResult>(`/api/faults/${id}/submit`, { method: 'POST', body: { result_note: resultNote } })
 }
 
 // POST /{id}/confirm —— 确认完成（创建人；创建人不可用时 admin 代确认，代确认 reason 必填）：→ done。

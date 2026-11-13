@@ -1,7 +1,7 @@
 // 时间线类型：与后端 backend/app/schemas.py 的 TimelineOut 一一对应（第三阶段需求四.1）。
 // 动作枚举取值已对照后端 models.TimelineAction 核实（return 在 Python 侧属性名为 return_，
 // 但枚举值是 "return"，JSON 里就是 "return"）。
-import type { FaultStatus } from './fault'
+import type { Attachment, FaultStatus } from './fault'
 
 // 时间线动作类型（后端 models.TimelineAction）
 export type TimelineAction =
@@ -35,6 +35,9 @@ export interface TimelineEntry {
   note: string | null
   is_imported: boolean // true = 升级时从旧 handling_note 导入的"历史数据"
   created_at: string // ISO 8601
+  // 第四阶段追加：本条时间线随附的图片（进展/提交附图）；后端 TimelineOut.attachments。
+  // 无附图时为空数组；现场图片不在此（见 Fault.attachments）。
+  attachments: Attachment[]
 }
 
 // 动作展示文案（FaultTimelineList 标题用；动词与 FaultActionPanel 按钮口径一致，需求四.5"同一操作同一名称"）

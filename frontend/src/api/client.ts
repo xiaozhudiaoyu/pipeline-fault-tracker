@@ -91,3 +91,43 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
 
   return data as T
 }
+
+// 附件上传/回放专用：通用 request 假设“请求体是 JSON、响应是 JSON”，
+// 而 multipart 上传（不能手设 Content-Type，缺 boundary）与二进制图片都不符合。
+// 本函数只复用同一套 Authorization 注入 / 401 登出 / 非 2xx → ApiError 逻辑，
+// 成功时把原始 Response 交回调用方自取 .json() 或 .blob()（避开一次重复解析）。
+export async function requestRaw(
+  path: string,
+  options: { method?: HttpMethod; body?: BodyInit; signal?: AbortSignal } = {},
+): Promise<Response> {
+  const { method, body, signal } = options
+  const token = getToken()
+  const headers: Record<string, string> = {}
+  // 关键：不手动设 Content-Type——传 FormData 时浏览器会自动带 multipart boundary。
+  if (token) headers['Authorization'] = `Bearer ${token}`
+
+  const resp = await fetch(`${BASE_URL}${path}`, {
+    method,
+    signal,
+    headers: Object.keys(headers).length > 0 ? headers : undefined,
+    body,
+  })
+
+  if (resp.status === 401 && token) notifyUnauthorized()
+  if (!resp.ok) {
+    // 错误体仍是后端 {code, message, details}；非该结构（如 nginx 的 HTML）时兜底。
+    let errBody: ApiErrorBody
+    try {
+      const text = await resp.text()
+      const data: unknown = text ? JSON.parse(text) : null
+      errBody =
+        data !== null && typeof data === 'object' && 'code' in data
+          ? (data as ApiErrorBody)
+          : { code: `http_${resp.status}`, message: resp.statusText || `请求失败（${resp.status}）`, details: [] }
+    } catch {
+      errBody = { code: `http_${resp.status}`, message: resp.statusText || `请求失败（${resp.status}）`, details: [] }
+    }
+    throw new ApiError(resp.status, errBody)
+  }
+  return resp
+}

@@ -9,6 +9,7 @@ import StatusTag from '../components/StatusTag.vue'
 import PriorityTag from '../components/PriorityTag.vue'
 import FaultActionPanel from '../components/FaultActionPanel.vue'
 import FaultTimelineList from '../components/FaultTimelineList.vue'
+import FaultAttachmentGallery from '../components/FaultAttachmentGallery.vue'
 // 修改故障信息已并入 FaultActionPanel 的动作对话框，内嵌面板不再挂载（组件文件暂保留）
 // import FaultEditPanel from '../components/FaultEditPanel.vue'
 import { useFaultDetail } from '../composables/useFaultDetail'
@@ -111,6 +112,9 @@ const affixOff = computed(() => isCompact.value || timelineOrientation.value ===
             <el-descriptions-item label="更新时间">{{ formatDateTime(fault.updated_at) }}</el-descriptions-item>
             <el-descriptions-item label="完成时间" :span="2">{{ formatDateTime(fault.closed_at) }}</el-descriptions-item>
           </el-descriptions>
+
+          <!-- 现场图片（第四阶段）：有附件才渲染，无图整块隐藏。删除权限由组件内部镜像后端判定 -->
+          <FaultAttachmentGallery :fault="fault" />
 
           <!-- 修改故障信息入口已移至右栏「处理操作」面板（原内嵌面板，保留备查） -->
           <!-- <FaultEditPanel :fault="fault" /> -->

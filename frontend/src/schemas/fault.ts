@@ -10,6 +10,16 @@ export const FAULT_TEXT_LIMITS = {
   symptom: 1000,
 } as const
 
+// 图片附件限制（第四阶段）：与后端 backend/app/config.py 的 attachment_max_bytes /
+// attachment_max_per_fault 逐字同源（5 MB / 10 张）。el-upload 的 before-upload 与提示文案
+// 均共引本常量，避免“输入上限与校验上限两处硬编码不一致”的旧坑（字数限制侧已踩过）。
+// 改后端默认值时务必同步这里，否则前端拦得住、后端拦不住（或反之）。
+export const FAULT_ATTACHMENT_LIMITS = {
+  maxBytes: 5 * 1024 * 1024, // 5 MB，对齐后端 5_242_880
+  maxPerFault: 10,
+  accept: '.png,.jpg,.jpeg', // 仅供文件选择器过滤；真实类型以后端文件头判定为准
+} as const
+
 // 登记故障表单校验（对应后端 FaultCreate 的约束：pipeline_id>=1、location 2~200 且首字符非空白、
 // symptom 5~1000、occurred_at 不晚于当前时间（容忍 60s 时钟偏移））
 export const faultCreateSchema = z.object({

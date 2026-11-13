@@ -16,6 +16,21 @@ export interface Pipeline {
   description: string | null
 }
 
+// 图片附件元数据（第四阶段，后端 schemas.AttachmentOut）。
+// url 是回放端点相对路径（/api/attachments/{id}），但裸 <img src> 带不了 Authorization 头会 401，
+// 展示须经 api/attachments.fetchAttachmentBlob 拉 blob 再 createObjectURL（见 FaultAttachmentGallery）。
+export interface Attachment {
+  id: number
+  fault_id: number
+  original_name: string
+  content_type: string
+  size_bytes: number
+  uploader_id: number | null
+  uploader_name: string | null
+  created_at: string // ISO 8601
+  url: string
+}
+
 // 故障记录（后端 FaultOut，列表与详情共用；pipeline 为嵌套对象，免去二次请求）
 export interface Fault {
   id: number
@@ -33,6 +48,14 @@ export interface Fault {
   // 第三阶段新增（后端 FaultOut.created_by/assignee：嵌套 UserBrief，旧数据为 null → 渲染“历史数据”）
   created_by: UserBrief | null
   assignee: UserBrief | null
+  // 第四阶段新增（后端 FaultOut.attachments：图片附件元数据内嵌，空即无图）
+  attachments: Attachment[]
+}
+
+// 追加进展 / 提交结果的响应体（后端 FaultActionResultOut）：FaultOut 全集 + 本次新建的时间线 id。
+// 两步式附图：动作返回后前端拿 timeline_id 逐张上传随附图片（POST /api/timelines/{id}/attachments）。
+export interface FaultActionResult extends Fault {
+  timeline_id: number
 }
 
 // 分页列表（后端 FaultListOut）

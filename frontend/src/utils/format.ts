@@ -13,3 +13,12 @@ export function formatDateTime(iso: string | null | undefined): string {
     // `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
   )
 }
+
+// 字节数人性化显示（附件体积展示）：不足 1MB 用 KB，否则 MB，均保留一位小数。
+// 仅展示用途，不做单位换算精度保证（KB=1024、MB=1024²）。
+export function formatBytes(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes < 0) return '—'
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`
+}

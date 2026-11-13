@@ -53,8 +53,8 @@ export type FaultCreateInput = z.infer<typeof faultCreateSchema>
 // （第三阶段 D5）旧 faultTransitionSchema 已随 /transition 端点与 StatusTransitionPanel 一并废除，
 // 各动作的文本输入校验见 schemas/auth.ts（progressNoteSchema 等）。
 
-// 修改故障信息校验（第三阶段收窄，对应后端 crud.update_fault 只应用 location / symptom）。
-// handling_note / priority 已从 PATCH 通道关闭，表单不再渲染这两个字段。
+// 修改故障信息校验（第四阶段扩展，对应后端 crud.update_fault 现应用 location / symptom / occurred_at）。
+// handling_note / priority 仍不在 PATCH 通道；现场图片删除（remove_attachment_ids）由组件维护 Set直接下发，不经本 schema。
 export const faultUpdateSchema = z.object({
   location: z
     .string({ required_error: '请填写故障发生位置' })
@@ -62,6 +62,12 @@ export const faultUpdateSchema = z.object({
     .min(2, '故障位置至少 2 个字')
     .max(FAULT_TEXT_LIMITS.location, `故障位置最多 ${FAULT_TEXT_LIMITS.location} 个字`)
     .refine((v) => !/^\s/.test(v), { message: '故障位置首字符不能为空白' }),
+  // 发生时间：表单预填当前值（恒非空），仅改动时下发；口径同登记（不晚于当前 60s 容忍）。
+  occurred_at: z
+    .string({ required_error: '请选择故障发生时间' })
+    .min(1, '请选择故障发生时间')
+    .refine((v) => !Number.isNaN(Date.parse(v)), { message: '发生时间格式无效' })
+    .refine((v) => Date.parse(v) <= Date.now() + 60_000, { message: '发生时间不得晚于当前时间' }),
   symptom: z
     .string({ required_error: '请描述故障现象' })
     .trim()

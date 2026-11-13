@@ -89,12 +89,15 @@ export interface FaultCreatePayload {
   priority?: FaultPriority
 }
 
-// PATCH /api/faults/{id} 请求体（后端 FaultUpdate）——第三阶段收窄为只改 location/symptom：
+// PATCH /api/faults/{id} 请求体（后端 FaultUpdate）——第四阶段扩展为可改 location/symptom/occurred_at：
 // 后端仅 pending 且创建人/admin 可改；priority 改走 POST /{id}/priority，
-// handling_note 由「提交处理结果」动作写入，PATCH 通道已关闭（旧字段传了会被静默忽略）。
+// handling_note 由「提交处理结果」动作写入（旧字段传了会被静默忽略）。
+// remove_attachment_ids：现场图片改由本通道删除（仅本故障且非时间线附图的 id 会生效，其余忽略）；不传即不删。
 export interface FaultUpdatePayload {
   location?: string
   symptom?: string
+  occurred_at?: string
+  remove_attachment_ids?: number[]
 }
 
 // 统一错误结构（后端 ErrorOut / FieldErrorOut）

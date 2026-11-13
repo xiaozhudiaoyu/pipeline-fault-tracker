@@ -1,17 +1,15 @@
 <script setup lang="ts">
-// 故障详情「现场图片」图库（第四阶段）：展示某条故障的附件缩略图，支持点击放大与删除。
+// 故障详情「现场图片」图库（第四阶段）：只读展示某条故障的现场附件缩略图，支持点击放大。
+// 第四阶段调整：现场图片不再在此直接删除（旧 DELETE 端点已废弃），删除改走「修改故障信息」面板。
 //
 // 为什么不用裸 <img :src="attachment.url">？后端回放端点要带 Authorization 头，
 // 而 <img>/<el-image> 的 src 直连不会附带该头 → 401。故统一经 api/attachments.fetchAttachmentBlob
 // 拉二进制 blob，再 createObjectURL 成本地地址渲染；组件卸载 / 附件变化时 revoke 释放内存。
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
-import { Delete } from '@element-plus/icons-vue'
 
 import { fetchAttachmentBlob } from '../api/attachments'
-import { useAttachmentDelete } from '../composables/useFaultAttachments'
-import { currentUser, isAdmin } from '../composables/useAuth'
 import { formatBytes, formatDateTime } from '../utils/format'
-import type { Attachment, Fault } from '../types/fault'
+import type { Fault } from '../types/fault'
 
 const props = defineProps<{ fault: Fault }>()
 
@@ -56,17 +54,6 @@ onBeforeUnmount(revokeAll)
 const previewList = computed(() =>
   (props.fault.attachments ?? []).map((a) => urls.value[a.id]).filter((u): u is string => Boolean(u)),
 )
-
-// 删除权限镜像后端 crud（pending + 创建人/admin）；后端仍是最终裁判，前端只决定按钮显隐。
-const canDelete = computed(
-  () =>
-    props.fault.status === 'pending' &&
-    (isAdmin.value || (currentUser.value != null && props.fault.created_by?.id === currentUser.value.id)),
-)
-const remove = useAttachmentDelete(() => props.fault.id)
-function onDelete(a: Attachment) {
-  remove.mutate(a.id)
-}
 </script>
 
 <template>
@@ -91,15 +78,6 @@ function onDelete(a: Attachment) {
           <span class="att-sub">{{ formatBytes(a.size_bytes) }} · {{ formatDateTime(a.created_at) }}</span>
           <span v-if="a.uploader_name" class="att-sub">上传人：{{ a.uploader_name }}</span>
         </div>
-        <el-button
-          v-if="canDelete"
-          class="att-del"
-          link
-          type="danger"
-          :loading="remove.isLoading.value"
-          :icon="Delete"
-          @click="onDelete(a)"
-        />
       </div>
     </div>
   </section>
@@ -159,13 +137,5 @@ function onDelete(a: Attachment) {
 .att-sub {
   font-size: 11px;
   color: var(--el-text-color-secondary);
-}
-.att-del {
-  position: absolute;
-  top: 4px;
-  right: 4px;
-  padding: 2px;
-  background: rgba(255, 255, 255, 0.85);
-  border-radius: 4px;
 }
 </style>

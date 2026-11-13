@@ -14,8 +14,8 @@
 //   退回 return   ：创建人，待确认；创建人不可用（历史数据/已停用）时 admin 代退回（理由必填，需求二.5）。
 //                   与代确认不同：退回方向不排“自己就是负责人”（后端 check_can_return 同样不拦，用户裁定）
 //   优先级 priority：admin 或创建人，done 之前
-//   修改故障信息 edit：admin 或创建人，仅 pending（镜像 crud.update_fault，只改 location/symptom，
-//                   原 FaultEditPanel 内嵌面板随本次改造并入动作对话框）
+//   修改故障信息 edit：admin 或创建人，仅 pending（镜像 crud.update_fault，改 location/symptom/occurred_at
+//                   + 现场图片增删，原 FaultEditPanel 内嵌面板随本次改造并入动作对话框）
 //
 // 防重复点击（需求四.5）：任一动作提交中禁用全部按钮；对话框动作确定按钮同口径 loading。
 import { computed, reactive, ref } from 'vue'
@@ -30,6 +30,7 @@ import { isAdmin, currentUser } from '../composables/useAuth'
 import { progressNoteSchema, reasonSchema, resultNoteSchema, TEXT_LIMITS } from '../schemas/auth'
 import { faultUpdateSchema, FAULT_TEXT_LIMITS, FAULT_ATTACHMENT_LIMITS } from '../schemas/fault'
 import { FAULT_PRIORITY_OPTIONS, FAULT_STATUS_META } from '../types/fault'
+import { formatBytes } from '../utils/format'
 import type { Fault, FaultPriority, FaultUpdatePayload } from '../types/fault'
 
 const props = defineProps<{ fault: Fault }>()
@@ -135,13 +136,26 @@ const dialogVisible = computed({
   },
 })
 const dialogError = ref('')
-const dialogForm = reactive<{ assigneeId: number | undefined; text: string; priority: FaultPriority; location: string; symptom: string }>({
+const dialogForm = reactive<{ assigneeId: number | undefined; text: string; priority: FaultPriority; location: string; symptom: string; occurred_at: string }>({
   assigneeId: undefined,
   text: '',
   priority: 'normal',
   location: '',
   symptom: '',
+  occurred_at: '',
 })
+// 修改故障信息（第四阶段扩展）：现场图片增删编辑态 + 发生时间基线。
+// onsite=本故障现场图片（FaultOut.attachments 已滤为时间线外）；editRemoveIds=勾选标记删除的 id；
+// 新增图片复用 dialogFiles（与进展/提交同一暂存列表，openDialog 已重置）。occurredAtBaseline 用于“仅改动才下发”。
+const onsite = computed(() => props.fault.attachments ?? [])
+const editRemoveIds = ref<Set<number>>(new Set())
+const occurredAtBaseline = ref('')
+function toggleEditRemove(id: number) {
+  const next = new Set(editRemoveIds.value)
+  if (next.has(id)) next.delete(id)
+  else next.add(id)
+  editRemoveIds.value = next
+}
 // 修改故障信息的字段级报错（Zod issues 按字段归并，同原 FaultEditPanel 口径）
 const fieldErrors = reactive<Record<string, string>>({})
 
@@ -238,10 +252,13 @@ function openDialog(name: DialogName) {
   dialogForm.text = ''
   dialogForm.priority = props.fault.priority
   dialogFiles.value = [] // 重开对话框不残留上次暂存的图片
-  // 修改故障信息：预填当前值（同原 FaultEditPanel 的 startEdit）
+  // 修改故障信息：预填当前值（同原 FaultEditPanel 的 startEdit），并重置图片删除标记与发生时间基线
   if (name === 'edit') {
     dialogForm.location = props.fault.location
+    occurredAtBaseline.value = props.fault.occurred_at.slice(0, 19)
+    dialogForm.occurred_at = occurredAtBaseline.value
     dialogForm.symptom = props.fault.symptom
+    editRemoveIds.value = new Set()
   }
 }
 
@@ -290,7 +307,11 @@ function onDialogConfirm() {
   // 避免无谓 bump updated_at）→ 无改动不发请求直接关框（同原 FaultEditPanel.onSubmit）。
   if (name === 'edit') {
     clearFieldErrors()
-    const r = faultUpdateSchema.safeParse({ location: dialogForm.location, symptom: dialogForm.symptom })
+    const r = faultUpdateSchema.safeParse({
+      location: dialogForm.location,
+      occurred_at: dialogForm.occurred_at,
+      symptom: dialogForm.symptom,
+    })
     if (!r.success) {
       for (const issue of r.error.issues) {
         const key = String(issue.path[0] ?? 'form')
@@ -298,17 +319,23 @@ function onDialogConfirm() {
       }
       return
     }
+    // 只发改动过的字段 + 标记删除的现场图片 id；新增图片复用 dialogFiles（PATCH 成功后逐张上传）。
     const payload: FaultUpdatePayload = {}
     const loc = dialogForm.location.trim()
     if (loc !== props.fault.location) payload.location = loc
     const sym = dialogForm.symptom.trim()
     if (sym !== props.fault.symptom) payload.symptom = sym
-    if (Object.keys(payload).length === 0) {
+    if (dialogForm.occurred_at && dialogForm.occurred_at !== occurredAtBaseline.value) {
+      payload.occurred_at = dialogForm.occurred_at
+    }
+    if (editRemoveIds.value.size > 0) payload.remove_attachment_ids = [...editRemoveIds.value]
+    const files = stagedFiles()
+    if (Object.keys(payload).length === 0 && files.length === 0) {
       closeDialog()
       ElMessage.info('没有需要保存的改动')
       return
     }
-    update.mutate({ id: props.fault.id, payload }, { onSuccess: () => closeDialog() })
+    update.mutate({ id: props.fault.id, payload, files }, { onSuccess: () => closeDialog() })
     return
   }
 
@@ -456,7 +483,7 @@ const dialogLoading = computed(() => {
           </el-radio-group>
         </el-form-item>
 
-        <!-- 修改故障信息：字段与原 FaultEditPanel 一致，仅开放 location / symptom -->
+        <!-- 修改故障信息（第四阶段扩展）：location / symptom / occurred_at + 现场图片增删 -->
         <template v-if="dialogName === 'edit'">
           <el-form-item label="故障位置" required :error="fieldErrors.location">
             <el-input
@@ -464,6 +491,15 @@ const dialogLoading = computed(() => {
               placeholder="如：3 号工位传送带"
               :maxlength="FAULT_TEXT_LIMITS.location"
               show-word-limit
+              class="dialog-control"
+            />
+          </el-form-item>
+          <el-form-item label="发生时间" required :error="fieldErrors.occurred_at">
+            <el-date-picker
+              v-model="dialogForm.occurred_at"
+              type="datetime"
+              placeholder="选择故障发生时间"
+              value-format="YYYY-MM-DD[T]HH:mm:ss"
               class="dialog-control"
             />
           </el-form-item>
@@ -477,6 +513,40 @@ const dialogLoading = computed(() => {
               show-word-limit
               class="dialog-control"
             />
+          </el-form-item>
+          <el-form-item label="现场图片">
+            <div class="photo-edit">
+              <div v-if="onsite.length > 0" class="photo-existing">
+                <div
+                  v-for="a in onsite"
+                  :key="a.id"
+                  class="photo-row"
+                  :class="{ 'is-removed': editRemoveIds.has(a.id) }"
+                >
+                  <el-checkbox :model-value="editRemoveIds.has(a.id)" @change="toggleEditRemove(a.id)">
+                    标记删除
+                  </el-checkbox>
+                  <span class="photo-name" :title="a.original_name">{{ a.original_name }}</span>
+                  <span class="photo-size">{{ formatBytes(a.size_bytes) }}</span>
+                </div>
+              </div>
+              <el-upload
+                v-model:file-list="dialogFiles"
+                list-type="picture-card"
+                :auto-upload="false"
+                :limit="FAULT_ATTACHMENT_LIMITS.maxPerFault"
+                :accept="FAULT_ATTACHMENT_LIMITS.accept"
+                :on-change="onDialogFileChange"
+              >
+                <el-icon><Plus /></el-icon>
+              </el-upload>
+              <div class="upload-hint">
+                勾选上方图片标记删除、确定后移除；点 + 追加新图（确定时上传）。最多
+                {{ FAULT_ATTACHMENT_LIMITS.maxPerFault }} 张，单张≤{{
+                  FAULT_ATTACHMENT_LIMITS.maxBytes / 1024 / 1024
+                }}MB，仅 PNG / JPEG
+              </div>
+            </div>
           </el-form-item>
         </template>
       </el-form>
@@ -525,5 +595,42 @@ const dialogLoading = computed(() => {
   margin-top: 4px;
   font-size: 12px;
   color: var(--el-text-color-secondary, #909399);
+}
+/* 修改故障信息对话框：现场图片增删区（与 FaultEditPanel 同口径） */
+.photo-edit {
+  width: 100%;
+}
+.photo-existing {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 10px;
+}
+.photo-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 8px;
+  border: 1px solid var(--el-border-color-light);
+  border-radius: 6px;
+}
+.photo-row.is-removed {
+  /* 标记删除的行整体置灰、名称加删除线，与未勾选项区分 */
+  background: var(--el-fill-color-light);
+  opacity: 0.6;
+}
+.photo-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+}
+.photo-row.is-removed .photo-name {
+  text-decoration: line-through;
+}
+.photo-size {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
 }
 </style>

@@ -30,8 +30,3 @@ export async function fetchAttachmentBlob(attachment: Attachment, signal?: Abort
   const resp = await requestRaw(attachment.url, { signal })
   return await resp.blob()
 }
-
-// DELETE /api/attachments/{id} —— 删除附件（后端裁决 pending + 创建人/admin，204 无响应体）。
-export async function deleteAttachment(attachmentId: number): Promise<void> {
-  await requestRaw(`/api/attachments/${attachmentId}`, { method: 'DELETE' })
-}

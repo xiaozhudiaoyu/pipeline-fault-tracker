@@ -11,7 +11,7 @@ import { useMutation, useQueryClient } from '@tanstack/vue-query'
 import { ElMessage } from 'element-plus'
 
 import { ApiError } from '../api/client'
-import { uploadTimelineAttachment } from '../api/attachments'
+import { uploadAttachment, uploadTimelineAttachment } from '../api/attachments'
 import {
   addProgress,
   assignFault,
@@ -42,10 +42,11 @@ export function toUserMessage(err: unknown): string {
   return '操作失败，请稍后重试'
 }
 
-// 修改故障信息需要 id + payload。
+// 修改故障信息需要 id + payload；files 为本次新增的现场图片（两步式：PATCH 成功后逐张上传）。
 export interface UpdateVariables {
   id: number
   payload: FaultUpdatePayload
+  files?: File[]
 }
 
 export function useFaultMutations() {
@@ -63,12 +64,21 @@ export function useFaultMutations() {
     },
   })
 
-  // 修改故障信息：成功后写回详情缓存 + 列表失效（location/symptom 列可能变化）。
+  // 修改故障信息：成功后写回详情缓存 + 列表失效（location/symptom/occurred_at 列可能变化）。
+  // 现场图片两步式：mutationFn 内 PATCH（含 remove_attachment_ids 删除）成功后，逐张上传新图；
+  // 新图不进 PATCH 响应体，故有新增文件时额外失效详情缓存，重拉补齐 attachments。
   const update = useMutation<Fault, Error, UpdateVariables>({
-    mutationFn: ({ id, payload }) => updateFault(id, payload),
-    onSuccess: (fault) => {
+    mutationFn: async ({ id, payload, files }) => {
+      const fault = await updateFault(id, payload)
+      await uploadOnsiteImages(id, files)
+      return fault
+    },
+    onSuccess: (fault, vars) => {
       queryClient.setQueryData(['fault', fault.id], fault)
       queryClient.invalidateQueries({ queryKey: ['faults'] })
+      if (vars.files && vars.files.length > 0) {
+        queryClient.invalidateQueries({ queryKey: ['fault', fault.id] })
+      }
       ElMessage.success('修改已保存')
     },
     onError: (err) => {
@@ -99,6 +109,25 @@ async function uploadTimelineImages(timelineId: number, files?: File[]): Promise
   }
   if (ok > 0 && ok < files.length) {
     ElMessage.warning(`时间线图片 ${ok}/${files.length} 张上传成功`)
+  }
+}
+
+// 修改故障信息第二步：PATCH 已落库（含删除）后，把编辑面板新增的现场图片逐张上传到故障。
+// 与登记页同口径：单张失败不阻断其余、也不让整个修改失败（图片为补充信息，不回滚已提交的字段/删除）；
+// 部分失败给一条汇总提醒。在 mutationFn 内、onSuccess 之前执行，故随后的详情失效重拉时新图已落库。
+async function uploadOnsiteImages(faultId: number, files?: File[]): Promise<void> {
+  if (!files || files.length === 0) return
+  let ok = 0
+  for (const file of files) {
+    try {
+      await uploadAttachment(faultId, file)
+      ok += 1
+    } catch (err) {
+      ElMessage.error(`图片「${file.name}」上传失败：${toUserMessage(err)}`)
+    }
+  }
+  if (ok > 0 && ok < files.length) {
+    ElMessage.warning(`现场图片 ${ok}/${files.length} 张上传成功`)
   }
 }
 

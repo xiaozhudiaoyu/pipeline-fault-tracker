@@ -24,6 +24,9 @@ backend/*.sqlite
 backend/*.sqlite3
 backend/data/*.db
 
+# ---- 图片附件运行时目录（UPLOAD_DIR，用户上传的图片本体，属运行结果，不提交）----
+backend/data/uploads/
+
 # ---- 本地环境变量（含端口、DB 路径等本机配置，只提交 .env.example）----
 .env
 .env.local

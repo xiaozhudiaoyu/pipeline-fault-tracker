@@ -34,7 +34,7 @@ pipeline-fault-tracker/
 │   │   ├── main.py / config.py / database.py / models.py
 │   │   ├── schemas.py / crud.py / exceptions.py / auth.py
 │   │   └── routers/{auth.py, users.py, pipelines.py, faults.py}
-│   ├── alembic/              # 数据库迁移（4 个版本，head=105a10b2f697）
+│   ├── alembic/              # 数据库迁移（6 个版本，head=f5a3c8e21b60）
 │   ├── seed.py               # 演示数据播种（5 账号 + 3 流水线 + 5 故障，幂等）
 │   ├── create_admin.py       # 初始管理员创建（幂等、不重置已有密码，需求七.4）
 │   ├── entrypoint.sh         # 容器入口：alembic upgrade head → uvicorn
@@ -180,6 +180,9 @@ done 为终态：不可再流转、不可改回；历史记录只读，任何角
 | `CORS_ORIGINS` | backend/.env | 跨域白名单（逗号分隔；容器同源经 nginx 代理，一般无需改） | 本地 5173 |
 | `HOST` / `PORT` / `DB_ECHO` | backend/.env | 监听地址/端口、SQL 回显 | `127.0.0.1` / `8000` / `false` |
 | `BUSINESS_UTC_OFFSET_HOURS` | backend/.env 或环境变量 | 业务时区（相对 UTC 的整小时偏移）：`occurred_at` 的“不得晚于当前”判定与 `created_at/updated_at/closed_at` 写入均按它算，**与容器/宿主进程时区无关**（口径见 `backend/app/timeutil.py`） | `8`（北京时间） |
+| `UPLOAD_DIR` | backend/.env 或环境变量、compose | 图片附件目录（第四阶段）：文件本体落此，库内 `fault_attachments` 只存元数据；容器形态注入 `/app/data/uploads` 落 `pft-data` 卷 | `./data/uploads` |
+| `ATTACHMENT_MAX_BYTES` | backend/.env 或环境变量 | 单附件大小上限（字节，流式写盘边写边计数）；**与前端 `schemas/fault.ts` 的 `FAULT_ATTACHMENT_LIMITS` 同源，改一处需同步改另一处** | `5242880`（5 MB） |
+| `ATTACHMENT_MAX_PER_FAULT` | backend/.env 或环境变量 | 单条故障附件张数上限（服务端按 `fault_id` count 现查，**现场图片与进展/提交时间线附图共享此预算**）；同样与前端限制值同源 | `10` |
 | `SEED_PASSWORD` | backend/.env 或环境变量 | `seed.py` 演示账号统一初始密码（≥6 位，缺账号时才需要） | 无（不给即中止） |
 | `ADMIN_USERNAME` / `ADMIN_PASSWORD` / `ADMIN_DISPLAY_NAME` | backend/.env 或环境变量 | `create_admin.py` 初始管理员账号/密码/显示名 | `admin` / 无 / `系统管理员` |
 | `VITE_API_BASE_URL` | frontend/.env | 前端 API 基址（容器构建不设即空，走同源代理；本地开发指后端） | 模板给 `http://127.0.0.1:8000` |
@@ -208,11 +211,13 @@ done 为终态：不可再流转、不可改回；历史记录只读，任何角
   | `history` | 查看迁移链 |
   | `revision -m "..."` | 生成新迁移脚本（`--autogenerate` 自动对比模型与库差异） |
 
-- **迁移链（4 个版本，head = `105a10b2f697`）**：
+- **迁移链（6 个版本，head = `f5a3c8e21b60`）**：
   - `843f28b00698` baseline —— 手写基线，照抄现有库真实 DDL；空库可由此从零重建，现有库用 `stamp` 打标。
   - `a74bf448a946` —— 给 `pipeline_faults.occurred_at` 建索引 `ix_pipeline_faults_occurred_at`（列表倒序/时间筛选热点）。
   - `b3e19c4d7a52`（第二阶段）—— 加 `priority` 列（normal/urgent，默认普通），旧库升级用 `server_default` 回填后 `batch_alter_table` 摘默认（SQLite 需 batch，PG 自动退化）。
   - `105a10b2f697`（第三阶段）—— 新建 `users`、`fault_timelines` 两表 + `pipeline_faults` 加 `created_by_id`/`assignee_id`（可空外键，旧数据留 NULL）。
+  - `d8c2f5a91b47`（第四阶段）—— 新建 `fault_attachments` 表（现场图片附件元数据：文件本体落 `UPLOAD_DIR`，库内只存归属/文件名/大小/类型；`fault_id` 外键 `ondelete=CASCADE`）。
+  - `f5a3c8e21b60`（第四阶段追加）—— `fault_attachments` 加可空 `timeline_id`（进展/提交结果的时间线附图）：现场图片留 NULL，附图指向 `fault_timelines` 行；`batch_alter_table` 包裹兼容双方言，无存量回填。
 
 ### 10.1 空库初始化（全新环境，无旧数据）
 
@@ -223,7 +228,7 @@ cd backend
 uv sync                                   # 装依赖（.venv 不存在时自动创建）
 Copy-Item .env.example .env               # 配置模板（默认 DATABASE_URL=sqlite:///./fault_tracker.db）
 # 确保目标库文件不存在（或是全新空文件）；若已有一份旧库想保留，走 10.2
-.venv\Scripts\python.exe -m alembic upgrade head   # 空库依次跑完 4 个迁移，一次建到最新结构，库内 alembic_version=105a10b2f697
+.venv\Scripts\python.exe -m alembic upgrade head   # 空库依次跑完 6 个迁移，一次建到最新结构，库内 alembic_version=f5a3c8e21b60
 .venv\Scripts\python.exe create_admin.py           # 创建初始管理员（先设 ADMIN_PASSWORD，见第八节）
 $env:SEED_PASSWORD="你的演示密码"                   # （可选）演示数据：5 测试账号 + 流水线 + 故障
 .venv\Scripts\python.exe seed.py
@@ -267,7 +272,7 @@ docker compose up -d --build
 
 - 访问地址：**http://localhost:8080**（前端 nginx 同源反代 `/api/` 到后端，无需另配 CORS）。
 - 后端仅由前端经 nginx 访问，本身未映射宿主端口；健康检查 `docker compose ps` 看 backend 是否 `healthy`。
-- **数据位置**：SQLite 库文件在 named volume `pft-data`（容器内 `/app/data/fault_tracker.db`），`down` 不删、`down -v` 才删。
+- **数据位置**：SQLite 库文件在 named volume `pft-data`（容器内 `/app/data/fault_tracker.db`）；图片附件同卷下的 `/app/data/uploads`（第四阶段，`UPLOAD_DIR` 注入）。二者 `down` 不删、`down -v` 才删。
 - **迁移**：首次启动 backend 自动 `alembic upgrade head` 建全表，之后重启幂等。
 
 ### 11.3 创建初始管理员 / 演示数据（一次性命令）
@@ -293,14 +298,17 @@ docker compose -f docker-compose.yml -f docker-compose.pg.yml up -d --build
 
 ### 11.5 停止、日志、备份
 
+> **数据 = 两处（自第四阶段图片附件起）**：数据库（库文件 / PG）＋ 图片附件目录 `/app/data/uploads`（named volume `pft-data`，SQLite 与 PG 形态同卷）。**完整备份必须两者都带走**：只备库则附件丢失、附件元数据行指向的空文件回放按 404；只备 uploads 则元数据/归属信息丢失、图片成无人认领的孤儿文件。
+
 | 操作 | 命令 | 说明 |
 |---|---|---|
 | 停止（保留数据） | `docker compose down` | 删容器与网络，**数据卷保留** |
 | 停止并删数据 | `docker compose down -v` | 连 `pft-data`（/`pft-pgdata`）一起删，**不可逆，慎用** |
 | 查看状态 | `docker compose ps` | backend 应 `healthy` |
 | 查看日志 | `docker compose logs -f backend` | 加服务名看单服务；含 entrypoint 迁移输出 |
-| 备份 SQLite | `docker compose cp backend:/app/data/fault_tracker.db ./backup-<日期>.db` | 拷出库文件即快照；恢复反向 `cp` 回该路径后 `down`/`up` |
-| 备份 PG | `docker compose exec postgres pg_dump -U pft pft > backup-<日期>.sql` | 恢复：`cat backup.sql \| docker compose exec -T postgres psql -U pft pft` |
+| 备份 SQLite | `docker compose cp backend:/app/data/fault_tracker.db ./backup-<日期>.db` | 拷出库文件即快照（**图片另见下行 uploads**）；恢复反向 `cp` 回该路径后 `down`/`up` |
+| 备份 PG | `docker compose exec postgres pg_dump -U pft pft > backup-<日期>.sql` | 恢复：`cat backup.sql \| docker compose exec -T postgres psql -U pft pft`（**图片另见下行 uploads**） |
+| 备份图片附件 | `docker compose cp backend:/app/data/uploads ./backup-<日期>-uploads` | 整目录递归拷出（`cp` 支持目录）。恢复：确保容器内父目录 `/app/data` 已存在（`down`/`up` 后由 backend 自动 `mkdir`），再 `docker compose cp ./backup-<日期>-uploads backend:/app/data/`（目标 `/app/data/uploads` 不存在时会被整体拷为该目录） |
 
 > 本机 Docker 在 WSL 内时，上述 `docker` 命令从 PowerShell 经 `wsl -e bash -c "..."` 进入（见项目环境说明）；在已装 Docker Desktop 的机器上直接执行即可。
 
@@ -334,7 +342,7 @@ rm -rf ~/olddb
 **已实测通过（静态/离线，AI 直读磁盘或跑脚本为证）**：
 
 - `create_admin.py`：临时库 5 场景 18 项断言全绿——缺口令且无账号即中止（零账号写入）、带口令建 `admin`（bcrypt `$2b$` 哈希、明文不入库）、重跑跳过不重置不新增、改密码重跑仍拒改、自定义 `ADMIN_USERNAME` 生效。
-- 空库 `alembic upgrade head`（容器 entrypoint 首启路径）：一路建 `pipelines/pipeline_faults/users/fault_timelines/alembic_version` 五表，版本至 `105a10b2f697`，`pipeline_faults` 含 `priority/created_by_id/assignee_id`。
+- 空库 `alembic upgrade head`（容器 entrypoint 首启路径）：一路建 `pipelines/pipeline_faults/users/fault_timelines/fault_attachments/alembic_version` 六表，版本至 `f5a3c8e21b60`，`pipeline_faults` 含 `priority/created_by_id/assignee_id`、`fault_attachments` 含可空 `timeline_id`。
 - Compose 静态校验：SQLite 主线无 postgres、URL 为 `sqlite:////app/data/…`、卷 `pft-data`；PG 覆盖合并出 `postgres:16-alpine` + 双方言 URL + 双卷；缺 `SECRET_KEY` 被 `${:?}` 拒绝启动。
 - 后端 `uv run pytest` 分层回归（各层红→绿过程见 git 提交历史）。
 

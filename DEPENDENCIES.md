@@ -16,6 +16,7 @@
 | 2026-09-29 | backend：`uv add --dev pytest httpx`（阶段二 P1 测试体系，dev 依赖组，不进运行时） | 24 → 33（+2 直接 +7 传递） | `pyproject.toml [dependency-groups] dev` + `uv.lock` + `uv run pytest` 72 通过（见「九」） |
 | 2026-09-30 | backend：`uv add "psycopg[binary]"`（阶段二 P3 PostgreSQL 驱动，运行时依赖） | 33 → 36（+1 直接 +2 传递） | `pyproject.toml dependencies` + `uv.lock`（+91 行）+ 安装日志（见「十」） |
 | 2026-11-03 | backend：`uv add bcrypt pyjwt`（阶段三 M3 认证，运行时依赖） | 36 → 38（+2 直接，0 传递） | `pyproject.toml dependencies` + `uv.lock` + `uv run python -c "import bcrypt, jwt"` + 13 个 M3 集成测试全绿（见「十一」） |
+| 2026-11-13 | backend：`uv add python-multipart`（阶段四 图片附件上传 multipart 解析，运行时依赖） | 38 → 39（+1 直接，0 传递） | `pyproject.toml dependencies` + `uv.lock`（+11 行）+ `python-multipart 0.0.33` + 附件集成测试 12 绿（见「十三」） |
 | 2026-09-18 | frontend：`npm install`（Vue 3.4 / Vite 4.5 / Element Plus 2.5 / TanStack Query v4 / Zod 3 链） | 0 → 75 | `package-lock.json` + `npm ls --depth=0`（见「四」） |
 | 2026-11-10 | frontend：`@element-plus/icons-vue` 登记为直接依赖（~2.3.2，详情页「返回列表」按钮图标 ArrowLeft） | 顶层依赖 5 → 6；node_modules 包数 75 → 76（0 新增下载，原为 element-plus 传递依赖） | `package.json` + `package-lock.json` 根 deps + `npm run build` exit 0（见「十二」） |
 
@@ -173,3 +174,13 @@
 - **用途**：`FaultDetailView.vue` 导入 `ArrowLeft`，`<el-button link :icon="ArrowLeft">返回列表</el-button>`（本项目首个图标组件用法）。
 - **运行验证**：`vue-tsc --noEmit` exit 0；`npm run build` exit 0（built 25.70s）；chunk >500kB 告警为 EP 全量引入既有项（见「四」已知提示），非本次新增。界面图标显示属运行态，待用户刷新页面目视确认。
 - **依赖边界**：未动任何既有包版本；仅新增 1 个直接依赖声明 + 代码 1 处引用。Node 16 兼容（icons-vue 2.x 无 Node 版本硬约束）。与功能改动同属一次提交范围，如需可拆分单独提交（规则 3.5）。
+
+## 十三、backend multipart 解析依赖 python-multipart（2026-11-13 · 阶段四 图片附件）
+
+- **背景**：阶段四新增「故障现场图片附件」。上传端点 `POST /api/faults/{id}/attachments` 接收 `multipart/form-data`，FastAPI/Starlette 的 `UploadFile`/`File(...)` 依赖 `python-multipart` 解析表单体——缺它会在导入路由时抛 `RuntimeError: Form data requires "python-multipart"`。经方案确认后引入（规则 2.5），与功能改动分通道提交（规则 3.5）。
+- **命令**：`backend/` 下 `uv add python-multipart` → 安装 **1 包**：python-multipart 0.0.33（纯 Python wheel，`py3-none-any`）。
+- **实测版本**（`uv run python -c "import importlib.metadata as m; print(m.version('python-multipart'))"`）：**0.0.33**（与 `pyproject.toml` 下限 `python-multipart>=0.0.33` 一致）。
+- **传递依赖**：0 个——uv.lock 内该包条目无 `dependencies` 段（不依赖 Pillow：图片格式仅按文件头 magic bytes 判定，方案已定，故不引入图像库）。
+- **声明与锁同步**：`backend/pyproject.toml` `dependencies` 新增一行（含用途注释）；`backend/uv.lock` 同步更新（git diff +11 行）；属**运行时依赖**进入 Docker 镜像链路（`uv sync --frozen --no-dev`）。
+- **运行验证**：新增 `tests/test_api_attachments.py` 12 个集成测试全绿（上传重写文件名/列表/回放字节一致/删除连带删文件 + 格式/大小/张数三类 422 + 未登录 401 + 越权 404/403/409）；全量 `uv run pytest` **209 passed, 1 skipped, 1 xfailed**；前端 `vue-tsc --noEmit` 与 `npm run build` 均 exit 0。附件目录经测试用 autouse fixture `monkeypatch` 指向 tmp，不污染开发库目录。
+- **依赖边界**：未动任何既有包版本；本次仅新增 1 个运行时包与相关配套代码（models/crud/router/schema + 前端上传与图库组件）。存储口径变更（数据 = 库文件 + uploads 目录两处）同步体现于 README 11.5 与 compose 的 `UPLOAD_DIR` 注入。

@@ -323,7 +323,7 @@ def start_fault(
 
 @router.post(
     "/{fault_id}/progress",
-    response_model=schemas.FaultOut,
+    response_model=schemas.FaultActionResultOut,
     responses={
         403: {"model": schemas.ErrorOut, "description": "非当前负责人"},
         409: {"model": schemas.ErrorOut, "description": "当前状态不是 processing"},
@@ -334,15 +334,21 @@ def add_progress(
     payload: schemas.FaultProgressIn,
     user: CurrentUser,
     db: Session = Depends(get_db),
-) -> schemas.FaultOut:
-    """追加进展：processing 期间多次记录中间过程，不改变状态。"""
-    fault = crud.add_progress(db, fault_id, payload.note, actor=user)
-    return schemas.FaultOut.model_validate(fault)
+) -> schemas.FaultActionResultOut:
+    """追加进展：processing 期间多次记录中间过程，不改变状态。
+
+    附图（第四阶段追加）：本接口仍为纯 JSON，响应带 timeline_id，
+    前端拿到后另起一步 POST /api/timelines/{timeline_id}/attachments 逐张上传随附图片。
+    """
+    fault, timeline_id = crud.add_progress(db, fault_id, payload.note, actor=user)
+    data = schemas.FaultOut.model_validate(fault).model_dump()
+    data["timeline_id"] = timeline_id
+    return schemas.FaultActionResultOut.model_validate(data)
 
 
 @router.post(
     "/{fault_id}/submit",
-    response_model=schemas.FaultOut,
+    response_model=schemas.FaultActionResultOut,
     responses={
         403: {"model": schemas.ErrorOut, "description": "非当前负责人"},
         409: {"model": schemas.ErrorOut, "description": "当前状态不是 processing"},
@@ -353,10 +359,15 @@ def submit_fault(
     payload: schemas.FaultSubmitIn,
     user: CurrentUser,
     db: Session = Depends(get_db),
-) -> schemas.FaultOut:
-    """提交处理结果：processing → awaiting_confirmation；handling_note 一并落库。"""
-    fault = crud.submit_fault(db, fault_id, payload.result_note, actor=user)
-    return schemas.FaultOut.model_validate(fault)
+) -> schemas.FaultActionResultOut:
+    """提交处理结果：processing → awaiting_confirmation；handling_note 一并落库。
+
+    响应带本次 submit 时间线 id，供前端向同一附图端点上传随附图片（口径同 add_progress）。
+    """
+    fault, timeline_id = crud.submit_fault(db, fault_id, payload.result_note, actor=user)
+    data = schemas.FaultOut.model_validate(fault).model_dump()
+    data["timeline_id"] = timeline_id
+    return schemas.FaultActionResultOut.model_validate(data)
 
 
 @router.post(

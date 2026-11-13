@@ -49,6 +49,16 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = 720  # 12 小时
 
+    # ---- 图片附件（第四阶段）----
+    # 附件文件目录：本地开发默认 ./data/uploads（backend/ 下，不入库）；
+    # 容器形态由 compose 注入 UPLOAD_DIR=/app/data/uploads，落既有 pft-data 卷（需求七.3 持久化）。
+    # 注意：数据 = 库文件 + 本目录两处，备份/迁移都要带上（见 README 11.5）。
+    upload_dir: str = "./data/uploads"
+    # 单文件大小上限（字节，默认 5 MB）与每条故障张数上限；crud 流式写盘时边写边计数。
+    # 前端 schemas/fault.ts 的 FAULT_ATTACHMENT_LIMITS 与此同源，改这里要同步改那边（已踩过的坑）。
+    attachment_max_bytes: int = 5_242_880
+    attachment_max_per_fault: int = 10
+
     # ---- 演示数据播种（仅 seed.py 读取，不参与服务运行）----
     # 两种给法都支持（pydantic-settings 的标准优先级）：环境变量 SEED_PASSWORD > .env 同名键。
     # 默认 None = 不给密码，seed 遇到库中缺账号即中止，【绝不内置默认口令】（需求七.4）。

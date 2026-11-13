@@ -20,7 +20,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from .config import settings
 from .database import init_models
 from .exceptions import register_exception_handlers
-from .routers import auth, faults, pipelines, users
+from .routers import attachments, auth, faults, pipelines, users
 
 
 @asynccontextmanager
@@ -57,6 +57,7 @@ app = FastAPI(
         {"name": "faults", "description": "故障记录：登记、查询（按流水线/状态筛选）、详情、状态流转。"},
         {"name": "auth", "description": "认证（第三阶段）：登录、登出、当前用户。"},
         {"name": "users", "description": "用户管理（第三阶段）：创建、启停、重置密码，仅管理员。"},
+        {"name": "attachments", "description": "图片附件（第四阶段）：上传、列表、回放、删除。"},
     ],
 )
 
@@ -80,9 +81,12 @@ app.add_middleware(
 
 # ---- 挂载业务路由 ----
 # 各 router 自带 /api/pipelines、/api/faults 前缀；tags 与上面 openapi_tags 对应。
+# attachments 必须先于 faults 注册：Starlette 按注册顺序匹配路径模板，
+# faults 的 /{fault_id} 系路由会把 /api/faults/{id}/attachments 整段吃掉（405/404）。
 app.include_router(auth.router)
 app.include_router(users.router)
 app.include_router(pipelines.router)
+app.include_router(attachments.router)
 app.include_router(faults.router)
 
 

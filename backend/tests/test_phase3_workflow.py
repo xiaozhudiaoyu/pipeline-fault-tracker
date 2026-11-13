@@ -288,7 +288,7 @@ class TestWorkflowCrud:
         from app import crud
         crud.assign_fault(self.db, self.fault.id, self.handler.id, actor=self.admin)
         crud.start_fault(self.db, self.fault.id, actor=self.handler)
-        f = crud.submit_fault(self.db, self.fault.id, "更换轴承并复测３０分钟正常", actor=self.handler)
+        f, _tid = crud.submit_fault(self.db, self.fault.id, "更换轴承并复测３０分钟正常", actor=self.handler)
         assert f.status.value == "awaiting_confirmation"
 
     def test_sm7_confirm(self):

@@ -24,6 +24,7 @@ dependencies = [
     "psycopg[binary]>=3.3.6",         # PostgreSQL 驱动（阶段二 P3）；[binary] 含预编译 libpq，SQLAlchemy URL 用 postgresql+psycopg://
     "bcrypt>=5.0.0",
     "pyjwt>=2.15.1",
+    "python-multipart>=0.0.33",
 ]
 
 [tool.uv]

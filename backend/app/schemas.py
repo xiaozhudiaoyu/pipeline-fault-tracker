@@ -13,7 +13,7 @@
 
 from datetime import datetime, timedelta
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, computed_field, field_validator
 
 from . import timeutil
 from .models import FaultPriority, FaultRole, FaultStatus, TimelineAction
@@ -157,6 +157,21 @@ class FaultOut(BaseModel):
     # 第三阶段新增
     created_by: UserBrief | None = None
     assignee: UserBrief | None = None
+    # 第四阶段：图片附件元数据内嵌返回（文件本体走 GET /api/attachments/{id} 回放，
+    # 那里要带 Bearer 头；crud.get_fault 已 selectinload 预加载，列表不产生 N+1）。
+    # 注：此处只装现场图片（timeline_id IS NULL）；时间线附图见 TimelineOut.attachments。
+    attachments: list["AttachmentOut"] = Field(default_factory=list)
+
+
+class FaultActionResultOut(FaultOut):
+    """追加进展 / 提交结果的动作响应体：FaultOut 全集 + 本次新建的时间线 id。
+
+    两步式附图（方案已定）：动作本体仍为纯 JSON（不改 extra=forbid 契约），
+    响应额外携带 timeline_id，前端据此向 POST /api/timelines/{id}/attachments 上传随附图片。
+    其余 6 个闭环动作仍返回 FaultOut（不产附图入口，无需此字段）。
+    """
+
+    timeline_id: int = Field(description="本次动作新建的时间线记录 id，供随后上传附图寻址")
 
 
 class FaultTransition(BaseModel):
@@ -279,6 +294,32 @@ class FaultListOut(BaseModel):
     total: int = Field(description="符合筛选条件的总记录数（非当前页条数）")
     page: int = Field(description="当前页码，从 1 开始")
     size: int = Field(description="每页条数")
+
+
+# ── 图片附件（第四阶段）─────────────────────────────────────────────
+class AttachmentOut(BaseModel):
+    """故障图片附件元数据响应体（嵌在 FaultOut.attachments 里，亦可单独由上传/列表端点返回）。
+
+    uploader_name 是 ORM property（当前用户显示名，已删回退快照），
+    口径同 TimelineOut.operator_name，from_attributes 直接读。
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    fault_id: int
+    original_name: str
+    content_type: str
+    size_bytes: int
+    uploader_id: int | None
+    uploader_name: str | None = None
+    created_at: datetime
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def url(self) -> str:
+        """回放端点的相对路径，前端拼 BASE_URL 后 fetch blob 用（裸 img src 带不了 Bearer 头）。"""
+        return f"/api/attachments/{self.id}"
 
 
 # ── 统一错误响应结构（同 python_learn/todo_api 风格）──────────────────────
@@ -487,3 +528,6 @@ class TimelineOut(BaseModel):
     note: str | None
     is_imported: bool
     created_at: datetime
+    # 第四阶段追加：本条时间线随附的图片（进展/提交附图）。FaultTimeline.attachments
+    # 关系 lazy=selectin，list_timelines 预加载不产生 N+1；无附图时为空列表。
+    attachments: list["AttachmentOut"] = Field(default_factory=list)

@@ -12,10 +12,15 @@
 # SQLAlchemy 2 查询风格：select() 构造语句，db.scalars()/db.scalar() 执行。
 # 所有 db: Session 由路由层 Depends(get_db) 注入，本层不负责开关 session。
 
+import os
+import uuid
+from pathlib import Path
+
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from . import schemas, timeutil
+from .config import settings
 from .auth import (
     check_can_assign,
     check_can_confirm,
@@ -29,6 +34,10 @@ from .auth import (
     verify_password,
 )
 from .exceptions import (
+    AttachmentFormatError,
+    AttachmentLimitError,
+    AttachmentNotFoundError,
+    AttachmentTooLargeError,
     FaultNotFoundError,
     HandlingNoteLockedError,
     HandlingNoteRequiredError,
@@ -36,10 +45,12 @@ from .exceptions import (
     PermissionDeniedError,
     PipelineCodeDuplicateError,
     PipelineNotFoundError,
+    TimelineNotFoundError,
     UserNotFoundError,
     UsernameDuplicateError,
 )
 from .models import (
+    FaultAttachment,
     FaultPriority,
     FaultRole,
     FaultStatus,
@@ -202,6 +213,9 @@ def get_fault(db: Session, fault_id: int, viewer: User | None = None) -> Pipelin
             selectinload(PipelineFault.pipeline),
             selectinload(PipelineFault.created_by),
             selectinload(PipelineFault.assignee),
+            # 第四阶段：FaultOut 内嵌 attachments，不预加载会让列表逐行懒加载 N+1
+            #（uploader 关系自身 lazy=selectin，随 attachments 一并批量加载）。
+            selectinload(PipelineFault.attachments),
         )
         .where(PipelineFault.id == fault_id)
     )
@@ -227,11 +241,14 @@ def _write_timeline(
     from_assignee_id: int | None = None,
     to_assignee_id: int | None = None,
     note: str | None = None,
-) -> None:
+) -> FaultTimeline:
     """向 session 挂载一条时间线，**不 commit**——同事务由调用方末尾统一提交。
 
     需求四.2「状态更新与时间线插入在同一个 db.commit() 内」由此保证：任一处报错，
     外层 rollback 会让两者一起回到事务起点。operator=None 仅用于历史数据导入。
+
+    返回新建的 entry（已 flush 拿到 id），供调用方（进展/提交附图）事后定位本条记录；
+    不需要返回值的调用方直接忽略即可。flush 不会提交事务，回滚仍会连带撤销本次写入。
     """
     entry = FaultTimeline(
         fault_id=fault.id,
@@ -245,6 +262,8 @@ def _write_timeline(
         note=note,
     )
     db.add(entry)
+    db.flush()
+    return entry
 
 
 def create_fault(db: Session, data: schemas.FaultCreate, *, creator: User) -> PipelineFault:
@@ -363,35 +382,42 @@ def start_fault(db: Session, fault_id: int, *, actor: User) -> PipelineFault:
     return get_fault(db, fault_id)
 
 
-def add_progress(db: Session, fault_id: int, note: str, *, actor: User) -> PipelineFault:
-    """追加进展：processing + 当前负责人；状态不变，进展写入时间线。"""
+def add_progress(db: Session, fault_id: int, note: str, *, actor: User) -> tuple[PipelineFault, int]:
+    """追加进展：processing + 当前负责人；状态不变，进展写入时间线。
+
+    返回 (故障, 本次新建的时间线 id)：后者供路由把 timeline_id 回给前端，
+    前端据此走第二步向 /api/timelines/{id}/attachments 上传随附图片。
+    """
     fault = get_fault(db, fault_id)
     check_can_progress(actor, fault)
-    _write_timeline(
+    entry = _write_timeline(
         db, fault, TimelineAction.progress, actor,
         from_status=fault.status.value, to_status=fault.status.value,
         note=note,
     )
     db.commit()
-    return get_fault(db, fault_id)
+    return get_fault(db, fault_id), entry.id
 
 
 def submit_fault(
     db: Session, fault_id: int, result_note: str, *, actor: User
-) -> PipelineFault:
-    """提交处理结果：processing + 当前负责人 → awaiting_confirmation；handling_note 一并写入。"""
+) -> tuple[PipelineFault, int]:
+    """提交处理结果：processing + 当前负责人 → awaiting_confirmation；handling_note 一并写入。
+
+    返回 (故障, 本次 submit 时间线 id)，口径同 add_progress（供附图两步式寻址）。
+    """
     fault = get_fault(db, fault_id)
     check_can_submit(actor, fault)
     from_status = fault.status
     fault.status = FaultStatus.awaiting_confirmation
     fault.handling_note = result_note
-    _write_timeline(
+    entry = _write_timeline(
         db, fault, TimelineAction.submit, actor,
         from_status=from_status.value, to_status=FaultStatus.awaiting_confirmation.value,
         note=result_note,
     )
     db.commit()
-    return get_fault(db, fault_id)
+    return get_fault(db, fault_id), entry.id
 
 
 def confirm_fault(
@@ -462,6 +488,196 @@ def list_timelines(db: Session, fault_id: int, *, viewer: User) -> list[FaultTim
     """
     fault = get_fault(db, fault_id, viewer)
     return list(fault.timelines)
+
+
+# ── 图片附件（第四阶段）─────────────────────────────────────────────
+# 存储口径（方案已定）：文件本体落 settings.upload_dir，库内只存元数据行；
+# 数据 = 库文件 + uploads 目录两处，备份/迁移均须同时覆盖（README 11.5）。
+
+# 文件头魔术字节 → (真实 MIME, 存储扩展名)。纯标准库判定，不引入 Pillow；
+# 客户端声明的 content_type 与原始文件名一律不作数（可伪造，且中文名/路径分隔符不可信）。
+_MAGIC_IMAGE_TYPES: list[tuple[bytes, str, str]] = [
+    (b"\x89PNG\r\n\x1a\n", "image/png", ".png"),   # PNG：8 字节签名
+    (b"\xff\xd8\xff", "image/jpeg", ".jpg"),          # JPEG：SOI + 第三字节标记段
+]
+
+# 流式读写块大小：64 KB 够覆盖最长魔术字节（8B）百倍余量，又不把大文件一次吃进内存。
+_UPLOAD_CHUNK = 64 * 1024
+
+
+def _upload_dir() -> Path:
+    """附件目录 Path，不存在则兜底 mkdir（照抄 database.ensure_sqlite_dir 风格）。
+
+    每次调用都现读 settings.upload_dir：测试用 monkeypatch 改配置后无需重启进程；
+    容器形态由 compose 注入 UPLOAD_DIR=/app/data/uploads（落 pft-data 卷）。
+    """
+    d = Path(settings.upload_dir).expanduser()
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def _sniff_image(head: bytes) -> tuple[str, str]:
+    """按文件头判定真实类型，返回 (mime, 扩展名)；非 PNG/JPEG 抛 AttachmentFormatError。"""
+    for magic, mime, ext in _MAGIC_IMAGE_TYPES:
+        if head.startswith(magic):
+            return mime, ext
+    raise AttachmentFormatError()
+
+
+def list_attachments(db: Session, fault_id: int, viewer: User) -> list[FaultAttachment]:
+    """附件列表：can_view 检查在 get_fault 内（无权与不存在同为 404），按上传时间正序。"""
+    fault = get_fault(db, fault_id, viewer)
+    return list(fault.attachments)
+
+
+def add_attachment(db: Session, fault_id: int, upload, *, uploader: User) -> FaultAttachment:
+    """保存一张随建故障上传的现场图片（upload 为 fastapi.UploadFile）。
+
+    只登记 timeline_id=NULL 的现场图片；时间线附图走 add_attachment_for_timeline。
+    权限沿 can_view_fault（get_fault 内），无权/不存在同为 404。
+    """
+    fault = get_fault(db, fault_id, uploader)
+    return _register_image(db, fault, upload, uploader)
+
+
+def add_attachment_for_timeline(
+    db: Session, timeline_id: int, upload, *, uploader: User
+) -> FaultAttachment:
+    """向一条时间线记录（追加进展/提交结果）上传随附图片。
+
+    权限（方案已定）：仅本条时间线的操作人本人或 admin 可附图（谁的动作谁的图），
+    非归属 → 403；时间线不存在/所属故障不可见 → 404（不区分，防跨故障探测）。
+    类型/大小/每条故障张数上限复用 _register_image（现场图片与附图共享每故障 ≤ 10 张预算）。
+    """
+    timeline = db.get(FaultTimeline, timeline_id)
+    if timeline is None:
+        raise TimelineNotFoundError(timeline_id)
+    fault = timeline.fault
+    from .auth import can_view_fault  # 局部导入避免循环（同 _can_view_attachment）
+    if fault is None or not can_view_fault(uploader, fault):
+        raise TimelineNotFoundError(timeline_id)
+    if uploader.role != FaultRole.admin and timeline.operator_id != uploader.id:
+        raise PermissionDeniedError("仅本条时间线的操作人或管理员可为其上传附图")
+    return _register_image(db, fault, upload, uploader, timeline_id=timeline.id)
+
+
+def _register_image(
+    db: Session, fault: PipelineFault, upload, uploader: User, *, timeline_id: int | None = None
+) -> FaultAttachment:
+    """存一个上传图片文件并登记元数据（现场图片/时间线附图共用）。
+
+    流程（方案已定，顺序不可颠倒）：
+      ① 张数上限校验（count 现查本故障全部附图（含时间线），不信赖前端）；
+      ② 流式落盘：边读边写边计数，超限中断并删半成品——不把整文件先读进内存；
+        文件头在首块里 sniff，不合格同样删半成品后 422；
+      ③ 入库 commit；入库失败回滚并删已落盘文件，防孤儿文件。
+    存储文件名一律重写为 uuid4().hex + 真实扩展名，原始名只存字段供展示。
+    timeline_id 为 None → 现场图片；非 None → 挂到对应时间线。
+    """
+    count = db.scalar(
+        select(func.count()).select_from(FaultAttachment).where(FaultAttachment.fault_id == fault.id)
+    ) or 0
+    if count >= settings.attachment_max_per_fault:
+        raise AttachmentLimitError(settings.attachment_max_per_fault)
+
+    max_bytes = settings.attachment_max_bytes
+    # 先写入同目录隐藏临时文件（同一文件系统，rename 原子），判定通过后才定名：
+    # sniff 不过 / 超限 / 入库失败 → 删临时文件；成功 → os.replace 成正式名。
+    upload_dir = _upload_dir()
+    tmp_path = upload_dir / f".uploading-{uuid.uuid4().hex}"
+    try:
+        head = b""
+        written = 0
+        with open(tmp_path, "wb") as dst:
+            while True:
+                chunk = upload.file.read(_UPLOAD_CHUNK)
+                if not chunk:
+                    break
+                if written + len(chunk) > max_bytes:
+                    raise AttachmentTooLargeError(max_bytes)
+                dst.write(chunk)
+                if written == 0:
+                    head = chunk[:12]  # 首块缓存文件头，最长魔术字节 8B 的 1.5 倍
+                written += len(chunk)
+        if written == 0:
+            raise AttachmentFormatError()  # 空文件没有文件头，按格式不合法拦下
+        content_type, ext = _sniff_image(head)
+        filename = f"{uuid.uuid4().hex}{ext}"
+        final_path = upload_dir / filename
+        os.replace(tmp_path, final_path)
+    except Exception:
+        tmp_path.unlink(missing_ok=True)  # 删半成品（已定名的不在本分支，无需回退）
+        raise
+
+    original = Path(upload.filename or "image").name  # 去路径化只留展示名，防目录穿越字符入库
+    attachment = FaultAttachment(
+        fault_id=fault.id,
+        timeline_id=timeline_id,
+        filename=filename,
+        original_name=original[:255],
+        content_type=content_type,
+        size_bytes=written,
+        uploader_id=uploader.id,
+        uploader_name_snapshot=uploader.display_name,
+    )
+    db.add(attachment)
+    try:
+        db.commit()
+    except Exception:
+        # 入库失败：文件已落盘但库里没这行，不删就成了永远回放不到的孤儿 → 顺手清掉。
+        db.rollback()
+        final_path.unlink(missing_ok=True)
+        raise
+    db.refresh(attachment)
+    return attachment
+
+
+def get_attachment_for_download(db: Session, attachment_id: int, viewer: User) -> tuple[FaultAttachment, Path]:
+    """取回放中的附件：权限沿所属故障的 can_view（无权与不存在同为 404）。
+
+    库内元数据在但磁盘文件缺失（手工误删/卷未挂载）同样 404：
+    对客户端而言“拿不到这张图”与“不存在”无需区分，话术统一不泄露内部状态。
+    """
+    attachment = db.get(FaultAttachment, attachment_id)
+    if attachment is None:
+        raise AttachmentNotFoundError(attachment_id)
+    if not _can_view_attachment(viewer, attachment):
+        raise AttachmentNotFoundError(attachment_id)
+    path = _upload_dir() / attachment.filename
+    if not path.is_file():
+        raise AttachmentNotFoundError(attachment_id)
+    return attachment, path
+
+
+def _can_view_attachment(viewer: User, attachment: FaultAttachment) -> bool:
+    """附件查看权 = 所属故障查看权（口径集中 auth.can_view_fault，本函数只是适配器）。
+
+    读 attachment.fault 会触发懒加载；uploader 关系 lazy=selectin 已随 db.get 预加载。
+    """
+    from .auth import can_view_fault  # 局部导入避免循环（同 get_fault 既有写法）
+
+    return can_view_fault(viewer, attachment.fault)
+
+
+def delete_attachment(db: Session, attachment_id: int, viewer: User) -> None:
+    """删除附件：镜像 update_fault 权限面（pending + 创建人/admin）→ 删库行 → 删文件。
+
+    顺序取“先库后盘”：库行删失败文件还在（可重试）；若反过来先删文件后库失败，
+    会留下“元数据在、本体无”的 404 幻行。文件不存在不报错（幂等，重复删可接受）。
+    """
+    attachment = db.get(FaultAttachment, attachment_id)
+    if attachment is None:
+        raise AttachmentNotFoundError(attachment_id)
+    fault = attachment.fault
+    if fault is None:  # FK CASCADE 下理论不可达，防御性兜底
+        raise AttachmentNotFoundError(attachment_id)
+    if fault.status != FaultStatus.pending:
+        raise InvalidTransitionError(current=fault.status.value, target="attachment_delete")
+    if viewer.role != FaultRole.admin and fault.created_by_id != viewer.id:
+        raise PermissionDeniedError("仅创建人或管理员可删除附件，且仅限待处理状态")
+    db.delete(attachment)
+    db.commit()
+    (_upload_dir() / attachment.filename).unlink(missing_ok=True)
 
 
 # ── 用户（第三阶段）───────────────────────────────────────────────────

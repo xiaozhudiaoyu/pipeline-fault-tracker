@@ -200,6 +200,84 @@ class UserNotFoundError(AppError):
         )
 
 
+# ── 图片附件相关异常（第四阶段）──────────────────────────────────
+# 格式/大小/张数三类拒绝统一取 422（方案已定）：请求本身送到了正确的资源，
+# 只是上传体不符合要求，换个合格文件就能成功，不是与服务器状态冲突（那是 409）。
+class AttachmentTooLargeError(AppError):
+    """422：单文件超过 settings.attachment_max_bytes。"""
+
+    status_code = status.HTTP_422_UNPROCESSABLE_CONTENT
+    code = "attachment_too_large"
+    default_message = "附件文件超过大小上限"
+
+    def __init__(self, max_bytes: int) -> None:
+        super().__init__(
+            f"附件大小超过上限 {max_bytes // (1024 * 1024)} MB",
+            details=[{"field": "body.file", "type": "too_large", "message": f"单文件不得超过约 {max_bytes // (1024 * 1024)}MB"}],
+        )
+
+
+class AttachmentFormatError(AppError):
+    """422：文件头 magic bytes 不是 PNG/JPEG（扩展名与声明 MIME 不作数，以文件头为准）。"""
+
+    status_code = status.HTTP_422_UNPROCESSABLE_CONTENT
+    code = "attachment_format_unsupported"
+    default_message = "附件仅支持 PNG / JPEG 图片"
+
+    def __init__(self) -> None:
+        super().__init__(
+            "附件不是有效的 PNG 或 JPEG 图片",
+            details=[{"field": "body.file", "type": "format_unsupported", "message": "仅支持 PNG / JPEG（按文件头判定）"}],
+        )
+
+
+class AttachmentLimitError(AppError):
+    """422：单条故障附件张数达到 settings.attachment_max_per_fault 上限。"""
+
+    status_code = status.HTTP_422_UNPROCESSABLE_CONTENT
+    code = "attachment_limit_exceeded"
+    default_message = "附件张数已达上限"
+
+    def __init__(self, max_count: int) -> None:
+        super().__init__(
+            f"每条故障最多 {max_count} 张附件",
+            details=[{"field": "body.file", "type": "limit_exceeded", "message": f"单条故障附件不得超过 {max_count} 张"}],
+        )
+
+
+class AttachmentNotFoundError(AppError):
+    """404：附件不存在、无权查看，或库内元数据在但磁盘文件缺失（三者同一话术，
+    不泄露存在性，口径同 crud.get_fault 的 404）。"""
+
+    status_code = status.HTTP_404_NOT_FOUND
+    code = "attachment_not_found"
+    default_message = "附件不存在或无权查看"
+
+    def __init__(self, attachment_id: int) -> None:
+        super().__init__(
+            f"没有找到编号为 {attachment_id} 的附件",
+            details=[{"field": "path.attachment_id", "type": "not_found", "message": f"{attachment_id} 不在数据中"}],
+        )
+
+
+class TimelineNotFoundError(AppError):
+    """404：时间线记录不存在（向某条时间线上传附图时 id 无效）。
+
+    口径同 attachment_not_found：不向低权限方区分“不存在”与“无权”，
+    无权回溯（所属故障 can_view 不通过）统一落在本异常上。
+    """
+
+    status_code = status.HTTP_404_NOT_FOUND
+    code = "timeline_not_found"
+    default_message = "时间线记录不存在或无权查看"
+
+    def __init__(self, timeline_id: int) -> None:
+        super().__init__(
+            f"没有找到编号为 {timeline_id} 的时间线记录",
+            details=[{"field": "path.timeline_id", "type": "not_found", "message": f"{timeline_id} 不在数据中"}],
+        )
+
+
 # HTTPException 状态码 → 机器可读码。没列出的自动退化成 http_418 形式。
 _HTTP_CODE_MAP: dict[int, str] = {
     status.HTTP_400_BAD_REQUEST: "bad_request",

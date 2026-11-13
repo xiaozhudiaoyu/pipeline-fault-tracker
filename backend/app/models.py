@@ -10,7 +10,7 @@
 import enum
 from datetime import datetime
 
-from sqlalchemy import DateTime, Enum, ForeignKey, String, Text, func
+from sqlalchemy import DateTime, Enum, ForeignKey, Integer, String, Text, func
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 from . import timeutil
@@ -375,6 +375,22 @@ class PipelineFault(Base):
         order_by="FaultTimeline.created_at",
     )
 
+    # 图片附件关系（一对多：一条故障多张图片，第四阶段）。
+    # 文件本体存 settings.upload_dir，库内只存元数据（见 FaultAttachment）；
+    # cascade + FK ondelete=CASCADE 双保险同 timelines：删故障连带清元数据行
+    #（磁盘文件由 crud.delete_attachment / 备份口径负责，ORM 层管不到文件系统）。
+    # 第四阶段追加：本集合只装「现场图片」（timeline_id IS NULL，随建故障上传）；
+    # 时间线附图（进展/提交随附，timeline_id 非空）不进这里，改由 FaultTimeline.attachments
+    # 暴露，避免同一堆图既出现在现场图库又出现在时间线（过滤关系与 many-to-one 侧
+    # 不构成精确 inverse，故不用 back_populates；删故障靠 FK ondelete=CASCADE 兜底）。
+    attachments: Mapped[list["FaultAttachment"]] = relationship(
+        "FaultAttachment",
+        primaryjoin="and_(PipelineFault.id==FaultAttachment.fault_id, FaultAttachment.timeline_id.is_(None))",
+        foreign_keys="FaultAttachment.fault_id",
+        cascade="all, delete-orphan",
+        order_by="FaultAttachment.created_at",
+    )
+
     def __repr__(self) -> str:
         return (
             f"PipelineFault(id={self.id!r}, pipeline_id={self.pipeline_id!r}, "
@@ -500,6 +516,17 @@ class FaultTimeline(Base):
         lazy="selectin",
     )
 
+    # 本条时间线随附的图片（第四阶段追加：追加进展/提交结果可附图）。
+    # 与 PipelineFault.attachments（只看现场图片，timeline_id IS NULL）互斥：
+    # 此处专取 timeline_id 指向本条的记录。lazy="selectin"：加载 fault.timelines 时
+    # 一次 IN 查批量拉齐各条附图，防逐条懒加载 N+1。append-only：时间线不删，本关系不需 cascade。
+    attachments: Mapped[list["FaultAttachment"]] = relationship(
+        "FaultAttachment",
+        foreign_keys="FaultAttachment.timeline_id",
+        order_by="FaultAttachment.created_at",
+        lazy="selectin",
+    )
+
     @property
     def operator_name(self) -> str | None:
         """操作人显示名：优先当前用户 display_name，账号已删（SET NULL）时回退写入时快照。"""
@@ -519,4 +546,121 @@ class FaultTimeline(Base):
         return (
             f"FaultTimeline(id={self.id!r}, fault_id={self.fault_id!r}, "
             f"action={self.action!r}, operator_id={self.operator_id!r})"
+        )
+
+
+class FaultAttachment(Base):
+    """故障图片附件元数据（第四阶段：文件存磁盘，库内只存描述文件的行）。
+
+    设计口径（方案已定）：
+      · 文件本体落在 settings.upload_dir，filename 是服务端重写后的 uuid 文件名——
+        客户端传来的原始名只进 original_name 供展示，根除路径穿越与类型伪装；
+      · content_type 不是客户端声明值，是服务端按文件头 magic bytes 判定的真实类型
+        （png / jpeg 二选一，crud 层写入）；
+      · uploader 快照口径照抄 FaultTimeline.operator：FK SET NULL + 名称快照，
+        账号被删后仍能显示"谁传的"。
+    """
+
+    __tablename__ = "fault_attachments"
+
+    id: Mapped[int] = mapped_column(
+        primary_key=True,
+        autoincrement=True,
+        comment="附件主键",
+    )
+
+    fault_id: Mapped[int] = mapped_column(
+        ForeignKey("pipeline_faults.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+        comment="关联故障 ID",
+    )
+
+    # 时间线附图专用（第四阶段追加）：进展/提交随附的图片指向具体的 fault_timelines 行；
+    # 现场图片（随建故障上传）本列为 NULL。保留 fault_id 为必填：回放的查看权、
+    # 删除级联、每条故障张数预算均以 fault_id 为锚，timeline_id 只多一层归属。
+    timeline_id: Mapped[int | None] = mapped_column(
+        ForeignKey("fault_timelines.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+        comment="关联时间线 ID（进展/提交附图），现场图片为 NULL",
+    )
+
+    filename: Mapped[str] = mapped_column(
+        String(64),
+        nullable=False,
+        comment='服务端重写后的存储文件名（uuid4().hex + 扩展名），upload_dir 下的相对文件名',
+    )
+
+    original_name: Mapped[str] = mapped_column(
+        String(255),
+        nullable=False,
+        comment="客户端上传时的原始文件名，仅展示用，不参与任何路径拼接",
+    )
+
+    content_type: Mapped[str] = mapped_column(
+        String(50),
+        nullable=False,
+        comment='服务端 magic bytes 判定的真实 MIME：image/png 或 image/jpeg',
+    )
+
+    size_bytes: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        comment="文件字节数（落盘后实测值）",
+    )
+
+    uploader_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+        comment="上传人用户 ID，可空（账号被删后保留快照）",
+    )
+
+    uploader_name_snapshot: Mapped[str | None] = mapped_column(
+        String(100),
+        nullable=True,
+        comment="上传人显示名快照（口径同 timeline.operator_name_snapshot）",
+    )
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        default=_local_now,
+        server_default=func.now(),
+        nullable=False,
+        comment="上传时间（本地口径，见文件头 _local_now 注）",
+    )
+
+    # ---- relationship ----
+    # 所属故障（多对一）：不带 back_populates——PipelineFault.attachments 已改为只装现场图片
+    # 的过滤关系，与本 many-to-one（包含时间线附图）不是精确 inverse，强行配对会报错。
+    # _can_view_attachment / delete_attachment 读本属性回溯查看权与级联，靠 fault_id 解析，不受影响。
+    fault: Mapped["PipelineFault"] = relationship(
+        "PipelineFault",
+        foreign_keys=[fault_id],
+        overlaps="attachments",
+    )
+
+    # 所属时间线（仅时间线附图非空）：lazy 默认 select，只在需要时回查，不进 Fault/Timeline 热路径。
+    timeline: Mapped["FaultTimeline | None"] = relationship(
+        "FaultTimeline",
+        foreign_keys=[timeline_id],
+        overlaps="attachments",
+    )
+
+    # 同 operator 口径：lazy selectin 防 N+1；无 cascade（删号无入口，FK SET NULL 已防孤儿）。
+    uploader: Mapped["User | None"] = relationship(
+        "User",
+        foreign_keys=[uploader_id],
+        lazy="selectin",
+    )
+
+    @property
+    def uploader_name(self) -> str | None:
+        """上传人显示名：优先当前用户 display_name，账号已删时回退写入时快照（同 timeline 口径）。"""
+        return self.uploader.display_name if self.uploader is not None else self.uploader_name_snapshot
+
+    def __repr__(self) -> str:
+        return (
+            f"FaultAttachment(id={self.id!r}, fault_id={self.fault_id!r}, "
+            f"filename={self.filename!r}, size_bytes={self.size_bytes!r})"
         )

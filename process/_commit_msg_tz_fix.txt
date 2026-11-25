@@ -1,0 +1,13 @@
+fix(time): 业务时间不再隐式依赖进程时区，修复容器内登记被误判未来
+
+后端容器（UTC 进程）里 naive.astimezone() 把北京墙钟按 UTC 解释，
+"登记此刻"被 occurred_at 校验误判为未来 8 小时而 422；created_at/
+closed_at 取 datetime.now() 也落 UTC 墙钟，界面登记时间早 8 小时。
+
+- 新增 app/timeutil.py：业务时区口径唯一源头（business_now /
+  to_business_naive），固定 UTC 偏移，不引入 zoneinfo/tzdata 依赖
+- config.py 新增 business_utc_offset_hours（默认 8，可环境变量覆盖）
+- schemas/models/crud/seed 全部改走 timeutil，不再隐式读进程时区
+- 测试：新增 T1~T3（settings 偏移=0 时北京墙钟应拒）与 FX5（POSIX
+  下 TZ=UTC 走 HTTP 链路，Windows skip、CI 实跑）；25 处断言基准
+  datetime.now() 改 business_now()，否则 CI（UTC runner）大面积误红

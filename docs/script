@@ -1,0 +1,10 @@
+cd backend
+
+# 0.（可选冗余备份；process/ 下已有一份升级前副本）
+Copy-Item fault_tracker.db ..\process\fault_tracker.db.bak-p2-$(Get-Date -Format yyyyMMdd-HHmmss)
+
+# 1. 升级：只执行差量（加 priority 列，存量行回填 normal）
+.venv\Scripts\python.exe -X utf8 -m alembic upgrade head
+
+# 2. 核对（预期输出 [('b3e19c4d7a52',)] 与 [('normal', 17)]）
+.venv\Scripts\python.exe -X utf8 -c "import sqlite3; con=sqlite3.connect('fault_tracker.db'); print(con.execute('SELECT version_num FROM alembic_version').fetchall()); print(con.execute('SELECT priority, count(*) FROM pipeline_faults GROUP BY priority').fetchall())"

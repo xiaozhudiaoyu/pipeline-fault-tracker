@@ -1,0 +1,5 @@
+feat(frontend): 编辑对话框支持发生时间与现场图片增删，图库转只读
+
+- FaultActionPanel 的 edit 对话框补 occurred_at 选择器与现场图片勾选删除/追加新图，保存走两步式（PATCH 后逐张上传）
+- FaultAttachmentGallery 移除删除按钮转纯展示；删除 useFaultAttachments
+- api/attachments 移除 deleteAttachment；types/schemas/useFaultMutations 扩展 occurred_at 与 remove_attachment_ids

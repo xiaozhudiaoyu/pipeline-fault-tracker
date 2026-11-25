@@ -1,0 +1,21 @@
+fix(alembic): 两处迁移在 PostgreSQL 空库上补齐方言差异
+
+现象：docker compose -f docker-compose.yml -f docker-compose.pg.yml up 时
+backend 容器 alembic upgrade head 失败退出(1)，frontend 因依赖未起。SQLite
+主线正常，问题只在 PG 空库全量迁移时暴露。
+
+根因一（b3e19c4d7a52）：对已存在的表 add_column 一个 sa.Enum 列，PG 渲染成
+原生枚举类型 faultpriority，而 alembic 只在 create_table 时自动 CREATE TYPE，
+add_column 不会，报 UndefinedObject。SQLite 渲染成 VARCHAR 故从不触发。
+修复：PG 分支先 sa.Enum(FaultPriority).create(checkfirst=True) 再建列；
+downgrade 里显式 drop 类型。
+
+根因二（105a10b2f697）：布尔列 server_default=sa.text('1')/('0')，PG 报
+DatatypeMismatch（boolean 列配 integer 默认值）。SQLite 布尔本就存 0/1 所以正常。
+修复：PG 分支改用 sa.text('true')/('false')，SQLite 保持原 1/0 写法零漂移。
+
+两坑经隔离临时库最小复现确认各自单独即可致败，非同时触发；PG 事务性 DDL 使每轮
+日志只暴露链路上第一个失败点，故表现为修一个才露一个。
+
+验证：PG 空库 upgrade head 跑满至 105a10b2f697，三容器 healthy/running，
+alembic_version 落到 head；SQLite 空库同版本迁移无漂移（列类型/默认值不变）。

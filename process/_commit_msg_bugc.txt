@@ -1,0 +1,16 @@
+fix(backend): 指派/改派响应体回填负责人关系
+
+Bug 现象：详情页指派或改派负责人后，「负责人」仍显示未指派/旧负责人，刷新页面才正确。
+
+根因：assign_fault / reassign_fault 只写外键列 fault.assignee_id。函数开头 get_fault
+用 selectinload 已把 assignee 关系加载为 None（NULL 同样算已加载），SessionLocal 又是
+expire_on_commit=False，commit 后属性不过期；末尾再 get_fault 命中 identity map 时，
+eager loader 默认不覆盖已加载的关系，于是响应体里的 assignee 仍为 null 或旧值（库里其实
+已写对）。前端 success 回调只靠 setQueryData 把该响应写回 ['fault', id]、不补发 GET，
+故页面不更新、刷新才恢复。
+
+修法：按方案 A 改为赋关系对象 fault.assignee = assignee，同时同步外键与关系，一次写入
+两条读取路径都对，且不依赖「末尾重取绕过 identity map」这类隐含条件。
+
+回归测试：新增 TestAssignResponseAssignee（BUG-C-1/2），走完整 HTTP 链断言动作响应体带
+新负责人且与紧随的 GET 一致；改前红（assignee 为 null / 返回旧负责人）、改后全量 189 passed。

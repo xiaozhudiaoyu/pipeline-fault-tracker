@@ -1,0 +1,1 @@
+style(faults): 故障详情页描述列表size改为default、卡片圆角调整为4px

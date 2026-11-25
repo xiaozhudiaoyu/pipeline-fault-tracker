@@ -1,0 +1,5111 @@
+<!DOCTYPE html>
+<head>
+	<link rel="stylesheet" type="text/css" href="/seeyon/common/css/default.css?V=V9_0_240329_1800500">
+	<link rel="stylesheet" type="text/css" href="/seeyon/apps_res/v3xmain/css/message.css?V=V9_0_240329_1800500">
+	<script type="text/javascript">
+		var _ctpSkinUrl = "/skin/dist/components/components_theme_default.css";
+	</script>
+	<link rel="stylesheet" href="/seeyon/skin/dist/min/skinComponents-defaultTheme-old-min.css?V=V9_0_240329_1800500">
+	<link rel="stylesheet" href="/seeyon/skin/xicon/xicon-min.css?V=V9_0_240329_1800500">
+	<script type="text/javascript" charset="UTF-8" src="/seeyon/common/js/V3X.js?V=V9_0_240329_1800500"></script>
+	<script type="text/javascript">
+		var CSRFTOKEN = "null";
+		var _ctxPath = "/seeyon";
+		var v3x = new V3X();
+		v3x.init("/seeyon", "zh-cn");
+		_ = v3x.getMessage;
+		var messageURL = "/seeyon/message.do";
+		var onlineURL = "/seeyon/online.do";
+		var mainURL = "/seeyon/main.do";
+		var genericControllerURL = "/seeyon/genericController.do";
+		var userLoginAccountId = "670869647114347";
+		var hiddenSaveAsTeam_selDep = true;
+		var isNeedCheckLevelScope_selDep = false;
+		var onlyLoginAccount_selDep = false;
+		var showDeptPanelOfOutworker_selDep = true;
+		var currentUserId = "2003371611634288310";
+		var currentUserName = "朱常乐";
+	</script>
+	<script language="JavaScript" type="text/JavaScript"
+		src="/seeyon/apps_res/v3xmain/js/OnlineUser.js?V=V9_0_240329_1800500"></script>
+	<link rel="stylesheet" type="text/css"
+		href="/seeyon/common/jquery/themes/default/easyui.css?V=V9_0_240329_1800500" />
+	<link rel="stylesheet" type="text/css" href="/seeyon/common/jquery/themes/icon.css?V=V9_0_240329_1800500" />
+	<script type="text/javascript" charset="UTF-8" src="/seeyon/common/jquery/jquery.js?V=V9_0_240329_1800500"></script>
+	<script type="text/javascript" charset="UTF-8" src="/seeyon/common/jquery/jquery.easyui.js?V=V9_0_240329_1800500">
+	</script>
+	<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+	<script type="text/javascript" charset="UTF-8"
+		src="/seeyon/apps_res/addressbook/js/addressbook.js?V=V9_0_240329_1800500"></script>
+	<script type="text/javascript" charset="UTF-8" src="/seeyon/common/waterMark/js/waterMark.js?V=V9_0_240329_1800500">
+	</script>
+	<link type="text/css" rel="stylesheet" href="/seeyon/apps_res/doc/css/docMenu.css?V=V9_0_240329_1800500">
+	<link rel="stylesheet" type="text/css" href="/seeyon/apps_res/addressbook/css/default.css?V=V9_0_240329_1800500">
+	<script type="text/javascript">
+		var rightMenu = new RightMenu("/seeyon");
+		rightMenu.AddItem(
+			"viewMember",
+			_("MainLang.section_info_member"),
+			"",
+			"rbpm",
+			"viewMember",
+			"viewMember",
+		);
+		document.writeln(rightMenu.GetMenu());
+		$(document).ready(function () {
+			$("#showOfflineList").attr("checked", "checked");
+			if (false) {
+				$("#showOfflineList").attr("disabled", true);
+				$("#showOfflineList").attr("checked", false);
+			}
+			$("#showOfflineList").click(function () {
+				showOfflineList();
+			});
+			if ("false" == "false") {
+				initWatermark();
+			}
+		});
+		var isMoveMemberToOffline = false;
+		function moveMemberToOffline(obj, loginName, currentAccountId) {
+			if (isMoveMemberToOffline) {
+				return;
+			}
+			isMoveMemberToOffline = true;
+			var url =
+				"/seeyon/online.do?method=moveMemberToOffline&ln=" +
+				encodeURI(loginName) +
+				"&currentAccountId=" +
+				currentAccountId +
+				CsrfGuard.getUrlSurffix();
+			obj.href = encodeURI(url);
+		}
+		function initWatermark() {
+			addWaterMark({
+				appType: "addressbook",
+				isMobile: false,
+				imgInfo: true,
+			},
+				function (result) {
+					if (result.show && result.img) {
+						var watermarkImg = result.img;
+						$(".watermarkMask")
+							.css("background-image", 'url("' + watermarkImg + '")')
+							.show();
+						PointerEventsPolyfill.initialize({});
+					}
+				},
+			);
+		}
+	</script>
+	<style>
+		.panel-body {
+			overflow: hidden;
+		}
+		.watermarkMask {
+			position: absolute;
+			top: 0;
+			bottom: 0;
+			left: 0;
+			right: 0;
+			width: 100%;
+			height: 100%;
+			pointer-events: none;
+		}
+	</style>
+</head>
+<body class="easyui-layout">
+	<div region="north" border="false" style="height:30px;">
+		<form name="userForm" action="/seeyon/message.do" method="get" onsubmit="return false;">
+			<table height="20" width="100%" border="0" cellspacing="0" cellpadding="0">
+				<tr>
+					<td height="30" class="message-header-color">
+						<div>
+							<div class="div-float" style="width: 5px;">&nbsp;</div>
+							<div class="div-float im_search_input_div"><input type="text" id="userName" name="userName"
+									class="im_search_input" maxlength="150" value=""
+									onkeydown="onEnterPress('false', 'account', '670869647114347')" /><input
+									type="button" class="im_search_input_btn"
+									onclick="showByName('false', 'account', '670869647114347')" /></div>
+							<div class="div-float">
+								&nbsp;&nbsp;&nbsp;&nbsp;
+								<img src="/seeyon/apps_res/v3xmain/images/message/16/home.png" align="absmiddle"
+									alt="本部门人员" class="cursor-hand" onclick="showMyDeptUser()" />
+								&nbsp;&nbsp;
+								<img src="/seeyon/apps_res/v3xmain/images/message/16/relate.png" align="absmiddle"
+									alt="关联人员" class="cursor-hand" onclick="showMyRelate()" />
+								&nbsp;&nbsp;
+								<input id="showOfflineList" type="checkbox" class="cursor-hand" />显示离线人员
+							</div>
+						</div>
+					</td>
+				</tr>
+			</table>
+		</form>
+	</div>
+	<div region="center" border="false" style="overflow-y:auto">
+		<table width="100%" border="0" cellspacing="0" cellpadding="0">
+			<tr>
+				<td colspan="2">
+					<table width="100%" border="0" cellspacing="0" cellpadding="0" class="sort"
+						onclick="sortColumn(event, true)">
+						<thead>
+							<tr class="sort">
+								<td width="30" align="center">&nbsp;</td>
+								<td width="25%" type="String">姓名</td>
+								<td width="30%" type="String">部门</td>
+								<td width="40%" type="String">岗位</td>
+							</tr>
+						</thead>
+						<tbody>
+							<tr height="25" class="sort cursor-hand" onclick="" ondblclick=""
+								onmouseover="showEditImage('5544877291950719134')"
+								onmouseout="removeEditImage('5544877291950719134')">
+								<td align="center" class="sort">
+									<span class="inline-block state_online_0" style="margin-bottom: 0px;"></span>
+								</td>
+								<td class="sort">
+									曹刚
+								</td>
+								<td class=" sort">
+									TC0201&nbsp;
+								</td>
+								<td class=" sort">
+									部门经理&nbsp;
+								</td>
+							</tr>
+							<tr height="25" class="sort cursor-hand" onclick="" ondblclick=""
+								onmouseover="showEditImage('7042263537981670617')"
+								onmouseout="removeEditImage('7042263537981670617')">
+								<td align="center" class="sort">
+									<span class="inline-block state_online_0" style="margin-bottom: 0px;"></span>
+								</td>
+								<td class="sort">
+									丛储俊
+								</td>
+								<td class=" sort">
+									TC0101&nbsp;
+								</td>
+								<td class=" sort">
+									算法/人工智能研发&nbsp;
+								</td>
+							</tr>
+							<tr height="25" class="sort cursor-hand" onclick="" ondblclick=""
+								onmouseover="showEditImage('6936445471548982884')"
+								onmouseout="removeEditImage('6936445471548982884')">
+								<td align="center" class="sort">
+									<span class="inline-block state_online_0" style="margin-bottom: 0px;"></span>
+								</td>
+								<td class="sort">
+									殷军普
+								</td>
+								<td class=" sort">
+									EO&nbsp;
+								</td>
+								<td class=" sort">
+									董事长&nbsp;
+								</td>
+							</tr>
+							<tr height="25" class="sort cursor-hand" onclick="" ondblclick=""
+								onmouseover="showEditImage('162393283594833234')"
+								onmouseout="removeEditImage('162393283594833234')">
+								<td align="center" class="sort">
+									<span class="inline-block state_online_0" style="margin-bottom: 0px;"></span>
+								</td>
+								<td class="sort">
+									周俊
+								</td>
+								<td class=" sort">
+									OGM&nbsp;
+								</td>
+								<td class=" sort">
+									办公室主任&nbsp;
+								</td>
+							</tr>
+							<tr height="25" class="sort cursor-hand" onclick="" ondblclick=""
+								onmouseover="showEditImage('-8288506563235068200')"
+								onmouseout="removeEditImage('-8288506563235068200')">
+								<td align="center" class="sort">
+									<span class="inline-block state_online_0" style="margin-bottom: 0px;"></span>
+								</td>
+								<td class="sort">
+									梅磊
+								</td>
+								<td class=" sort">
+									TC0102&nbsp;
+								</td>
+								<td class=" sort">
+									售前&nbsp;
+								</td>
+							</tr>
+							<tr height="25" class="sort cursor-hand" onclick="" ondblclick=""
+								onmouseover="showEditImage('4032234989499336065')"
+								onmouseout="removeEditImage('4032234989499336065')">
+								<td align="center" class="sort">
+									<span class="inline-block state_online_0" style="margin-bottom: 0px;"></span>
+								</td>
+								<td class="sort">
+									茅宸瑜
+								</td>
+								<td class=" sort">
+									SOU&nbsp;
+								</td>
+								<td class=" sort">
+									采购总监&nbsp;
+								</td>
+							</tr>
+							<tr height="25" class="sort cursor-hand" onclick="" ondblclick=""
+								onmouseover="showEditImage('-4638738226708659435')"
+								onmouseout="removeEditImage('-4638738226708659435')">
+								<td align="center" class="sort">
+									<span class="inline-block state_online_0" style="margin-bottom: 0px;"></span>
+								</td>
+								<td class="sort">
+									贺艳萍
+								</td>
+								<td class=" sort">
+									FIN&nbsp;
+								</td>
+								<td class=" sort">
+									财务总监&nbsp;
+								</td>
+							</tr>
+							<tr height="25" class="sort cursor-hand" onclick="" ondblclick=""
+								onmouseover="showEditImage('-2368318713565460078')"
+								onmouseout="removeEditImage('-2368318713565460078')">
+								<td align="center" class="sort">
+									<span class="inline-block state_online_0" style="margin-bottom: 0px;"></span>
+								</td>
+								<td class="sort">
+									马瑞波
+								</td>
+								<td class=" sort">
+									TC0102&nbsp;
+								</td>
+								<td class=" sort">
+									项目总监&nbsp;
+								</td>
+							</tr>
+							<tr height="25" class="sort cursor-hand" onclick="" ondblclick=""
+								onmouseover="showEditImage('2709978083680996490')"
+								onmouseout="removeEditImage('2709978083680996490')">
+								<td align="center" class="sort">
+									<span class="inline-block state_online_0" style="margin-bottom: 0px;"></span>
+								</td>
+								<td class="sort">
+									卢忠岩
+								</td>
+								<td class=" sort">
+									TC0101&nbsp;
+								</td>
+								<td class=" sort">
+									算法/人工智能研发&nbsp;
+								</td>
+							</tr>
+							<tr height="25" class="sort cursor-hand" onclick="" ondblclick=""
+								onmouseover="showEditImage('5710327140488792140')"
+								onmouseout="removeEditImage('5710327140488792140')">
+								<td align="center" class="sort">
+									<span class="inline-block state_online_0" style="margin-bottom: 0px;"></span>
+								</td>
+								<td class="sort">
+									曾亮
+								</td>
+								<td class=" sort">
+									TC0102&nbsp;
+								</td>
+								<td class=" sort">
+									软件开发&nbsp;
+								</td>
+							</tr>
+							<tr height="25" class="sort cursor-hand" onclick="" ondblclick=""
+								onmouseover="showEditImage('8154829606999836995')"
+								onmouseout="removeEditImage('8154829606999836995')">
+								<td align="center" class="sort">
+									<span class="inline-block state_online_0" style="margin-bottom: 0px;"></span>
+								</td>
+								<td class="sort">
+									魏宝如
+								</td>
+								<td class=" sort">
+									FIN&nbsp;
+								</td>
+								<td class=" sort">
+									会计&nbsp;
+								</td>
+							</tr>
+							<tr height="25" class="sort cursor-hand" onclick="" ondblclick=""
+								onmouseover="showEditImage('-2025600803257037261')"
+								onmouseout="removeEditImage('-2025600803257037261')">
+								<td align="center" class="sort">
+									<span class="mobileOnline inline-block" style="margin-bottom: 0px;"></span>
+								</td>
+								<td class="sort">
+									曾利娟
+								</td>
+								<td class=" sort">
+									TC0201&nbsp;
+								</td>
+								<td class=" sort">
+									软件开发&nbsp;
+								</td>
+							</tr>
+							<tr height="25" class="sort cursor-hand" onclick="" ondblclick=""
+								onmouseover="showEditImage('4822046571217044882')"
+								onmouseout="removeEditImage('4822046571217044882')">
+								<td align="center" class="sort">
+									<span class="inline-block state_online_0" style="margin-bottom: 0px;"></span>
+								</td>
+								<td class="sort">
+									蒋文骏
+								</td>
+								<td class=" sort">
+									TC0101&nbsp;
+								</td>
+								<td class=" sort">
+									算法/人工智能研发&nbsp;
+								</td>
+							</tr>
+							<tr height="25" class="sort cursor-hand" onclick="" ondblclick=""
+								onmouseover="showEditImage('-6762607203433495916')"
+								onmouseout="removeEditImage('-6762607203433495916')">
+								<td align="center" class="sort">
+									<span class="inline-block state_online_0" style="margin-bottom: 0px;"></span>
+								</td>
+								<td class="sort">
+									王昕瑜
+								</td>
+								<td class=" sort">
+									HR&nbsp;
+								</td>
+								<td class=" sort">
+									HRBP&nbsp;
+								</td>
+							</tr>
+							<tr height="25" class="sort cursor-hand" onclick="" ondblclick=""
+								onmouseover="showEditImage('-1732586281906517120')"
+								onmouseout="removeEditImage('-1732586281906517120')">
+								<td align="center" class="sort">
+									<span class="inline-block state_online_0" style="margin-bottom: 0px;"></span>
+								</td>
+								<td class="sort">
+									胡蝶
+								</td>
+								<td class=" sort">
+									SOU&nbsp;
+								</td>
+								<td class=" sort">
+									采购&nbsp;
+								</td>
+							</tr>
+							<tr height="25" class="sort cursor-hand" onclick="" ondblclick=""
+								onmouseover="showEditImage('-6908068458901846255')"
+								onmouseout="removeEditImage('-6908068458901846255')">
+								<td align="center" class="sort">
+									<span class="inline-block state_online_0" style="margin-bottom: 0px;"></span>
+								</td>
+								<td class="sort">
+									陈利建
+								</td>
+								<td class=" sort">
+									QM&nbsp;
+								</td>
+								<td class=" sort">
+									质量总监&nbsp;
+								</td>
+							</tr>
+							<tr height="25" class="sort cursor-hand" onclick="" ondblclick=""
+								onmouseover="showEditImage('-4647725676117147210')"
+								onmouseout="removeEditImage('-4647725676117147210')">
+								<td align="center" class="sort">
+									<span class="mobileOnline inline-block" style="margin-bottom: 0px;"></span>
+								</td>
+								<td class="sort">
+									张春峰
+								</td>
+								<td class=" sort">
+									TC0201&nbsp;
+								</td>
+								<td class=" sort">
+									软件运维&nbsp;
+								</td>
+							</tr>
+							<tr height="25" class="sort cursor-hand" onclick="" ondblclick=""
+								onmouseover="showEditImage('-9161859494483441123')"
+								onmouseout="removeEditImage('-9161859494483441123')">
+								<td align="center" class="sort">
+									<span class="inline-block state_online_0" style="margin-bottom: 0px;"></span>
+								</td>
+								<td class="sort">
+									杨晖
+								</td>
+								<td class=" sort">
+									TC0102&nbsp;
+								</td>
+								<td class=" sort">
+									项目总监&nbsp;
+								</td>
+							</tr>
+							<tr height="25" class="sort cursor-hand" onclick="" ondblclick=""
+								onmouseover="showEditImage('-7537689434844150728')"
+								onmouseout="removeEditImage('-7537689434844150728')">
+								<td align="center" class="sort">
+									<span class="inline-block state_online_0" style="margin-bottom: 0px;"></span>
+								</td>
+								<td class="sort">
+									黄治华
+								</td>
+								<td class=" sort">
+									TC0102&nbsp;
+								</td>
+								<td class=" sort">
+									软件开发&nbsp;
+								</td>
+							</tr>
+							<tr height="25" class="sort cursor-hand" onclick="" ondblclick=""
+								onmouseover="showEditImage('4951940625113040659')"
+								onmouseout="removeEditImage('4951940625113040659')">
+								<td align="center" class="sort">
+									<span class="inline-block state_online_0" style="margin-bottom: 0px;"></span>
+								</td>
+								<td class="sort">
+									徐志伟
+								</td>
+								<td class=" sort">
+									TC0201&nbsp;
+								</td>
+								<td class=" sort">
+									系统运维&nbsp;
+								</td>
+							</tr>
+							<tr height="25" class="sort cursor-hand" onclick="" ondblclick=""
+								onmouseover="showEditImage('-3409209747670613181')"
+								onmouseout="removeEditImage('-3409209747670613181')">
+								<td align="center" class="sort">
+									<span class="inline-block state_online_0" style="margin-bottom: 0px;"></span>
+								</td>
+								<td class="sort">
+									张昊
+								</td>
+								<td class=" sort">
+									TC0102&nbsp;
+								</td>
+								<td class=" sort">
+									软件开发&nbsp;
+								</td>
+							</tr>
+							<tr height="25" class="sort cursor-hand" onclick="" ondblclick=""
+								onmouseover="showEditImage('1941166712336106039')"
+								onmouseout="removeEditImage('1941166712336106039')">
+								<td align="center" class="sort">
+									<span class="inline-block state_online_0" style="margin-bottom: 0px;"></span>
+								</td>
+								<td class="sort">
+									周显兵
+								</td>
+								<td class=" sort">
+									TC0201&nbsp;
+								</td>
+								<td class=" sort">
+									项目经理&nbsp;
+								</td>
+							</tr>
+							<tr height="25" class="sort cursor-hand" onclick="" ondblclick=""
+								onmouseover="showEditImage('-5415849217011268940')"
+								onmouseout="removeEditImage('-5415849217011268940')">
+								<td align="center" class="sort">
+									<span class="inline-block state_online_0" style="margin-bottom: 0px;"></span>
+								</td>
+								<td class="sort">
+									王彬
+								</td>
+								<td class=" sort">
+									BMC01&nbsp;
+								</td>
+								<td class=" sort">
+									销售&nbsp;
+								</td>
+							</tr>
+							<tr height="25" class="sort cursor-hand" onclick="" ondblclick=""
+								onmouseover="showEditImage('-1524387284933327566')"
+								onmouseout="removeEditImage('-1524387284933327566')">
+								<td align="center" class="sort">
+									<span class="inline-block state_online_0" style="margin-bottom: 0px;"></span>
+								</td>
+								<td class="sort">
+									张伟
+								</td>
+								<td class=" sort">
+									EO&nbsp;
+								</td>
+								<td class=" sort">
+									公司副总经理&nbsp;
+								</td>
+							</tr>
+							<tr height="25" class="sort cursor-hand" onclick="" ondblclick=""
+								onmouseover="showEditImage('4465427601270390847')"
+								onmouseout="removeEditImage('4465427601270390847')">
+								<td align="center" class="sort">
+									<span class="inline-block state_online_0" style="margin-bottom: 0px;"></span>
+								</td>
+								<td class="sort">
+									张家冀
+								</td>
+								<td class=" sort">
+									TC0201&nbsp;
+								</td>
+								<td class=" sort">
+									软件运维&nbsp;
+								</td>
+							</tr>
+							<tr height="25" class="sort cursor-hand" onclick="" ondblclick=""
+								onmouseover="showEditImage('-4378365514576346254')"
+								onmouseout="removeEditImage('-4378365514576346254')">
+								<td align="center" class="sort">
+									<span class="inline-block state_online_0" style="margin-bottom: 0px;"></span>
+								</td>
+								<td class="sort">
+									龚莹
+								</td>
+								<td class=" sort">
+									HR&nbsp;
+								</td>
+								<td class=" sort">
+									人事主管&nbsp;
+								</td>
+							</tr>
+							<tr height="25" class="sort cursor-hand" onclick="" ondblclick=""
+								onmouseover="showEditImage('5561970802637226348')"
+								onmouseout="removeEditImage('5561970802637226348')">
+								<td align="center" class="sort">
+									<span class="mobileOnline inline-block" style="margin-bottom: 0px;"></span>
+								</td>
+								<td class="sort">
+									周倩
+								</td>
+								<td class=" sort">
+									TC0201&nbsp;
+								</td>
+								<td class=" sort">
+									行政&nbsp;
+								</td>
+							</tr>
+							<tr height="25" class="sort cursor-hand" onclick="" ondblclick=""
+								onmouseover="showEditImage('-1417536659207536006')"
+								onmouseout="removeEditImage('-1417536659207536006')">
+								<td align="center" class="sort">
+									<span class="mobileOnline inline-block" style="margin-bottom: 0px;"></span>
+								</td>
+								<td class="sort">
+									黄琦
+								</td>
+								<td class=" sort">
+									TC0102&nbsp;
+								</td>
+								<td class=" sort">
+									项目经理&nbsp;
+								</td>
+							</tr>
+							<tr height="25" class="sort cursor-hand" onclick="" ondblclick=""
+								onmouseover="showEditImage('8110696678036948099')"
+								onmouseout="removeEditImage('8110696678036948099')">
+								<td align="center" class="sort">
+									<span class="inline-block state_online_0" style="margin-bottom: 0px;"></span>
+								</td>
+								<td class="sort">
+									王含芝
+								</td>
+								<td class=" sort">
+									BMC01&nbsp;
+								</td>
+								<td class=" sort">
+									销售&nbsp;
+								</td>
+							</tr>
+							<tr height="25" class="sort cursor-hand" onclick="" ondblclick=""
+								onmouseover="showEditImage('2798871470572323941')"
+								onmouseout="removeEditImage('2798871470572323941')">
+								<td align="center" class="sort">
+									<span class="inline-block state_online_0" style="margin-bottom: 0px;"></span>
+								</td>
+								<td class="sort">
+									宗峰
+								</td>
+								<td class=" sort">
+									TC0102&nbsp;
+								</td>
+								<td class=" sort">
+									咨询&nbsp;
+								</td>
+							</tr>
+							<tr height="25" class="sort cursor-hand" onclick="" ondblclick=""
+								onmouseover="showEditImage('-6956128359226457290')"
+								onmouseout="removeEditImage('-6956128359226457290')">
+								<td align="center" class="sort">
+									<span class="inline-block state_online_0" style="margin-bottom: 0px;"></span>
+								</td>
+								<td class="sort">
+									李宁
+								</td>
+								<td class=" sort">
+									SOU&nbsp;
+								</td>
+								<td class=" sort">
+									采购&nbsp;
+								</td>
+							</tr>
+							<tr height="25" class="sort cursor-hand" onclick="" ondblclick=""
+								onmouseover="showEditImage('1234201413459657792')"
+								onmouseout="removeEditImage('1234201413459657792')">
+								<td align="center" class="sort">
+									<span class="mobileOnline inline-block" style="margin-bottom: 0px;"></span>
+								</td>
+								<td class="sort">
+									王磊
+								</td>
+								<td class=" sort">
+									TC0102&nbsp;
+								</td>
+								<td class=" sort">
+									软件运维&nbsp;
+								</td>
+							</tr>
+							<tr height="25" class="sort cursor-hand" onclick="" ondblclick=""
+								onmouseover="showEditImage('3202925243562936164')"
+								onmouseout="removeEditImage('3202925243562936164')">
+								<td align="center" class="sort">
+									<span class="inline-block state_online_0" style="margin-bottom: 0px;"></span>
+								</td>
+								<td class="sort">
+									彭秋佳
+								</td>
+								<td class=" sort">
+									OGM&nbsp;
+								</td>
+								<td class=" sort">
+									行政主管&nbsp;
+								</td>
+							</tr>
+							<tr height="25" class="sort cursor-hand" onclick="" ondblclick=""
+								onmouseover="showEditImage('3895872531262098602')"
+								onmouseout="removeEditImage('3895872531262098602')">
+								<td align="center" class="sort">
+									<span class="mobileOnline inline-block" style="margin-bottom: 0px;"></span>
+								</td>
+								<td class="sort">
+									陈长亮
+								</td>
+								<td class=" sort">
+									TC0102&nbsp;
+								</td>
+								<td class=" sort">
+									咨询&nbsp;
+								</td>
+							</tr>
+							<tr height="25" class="sort cursor-hand" onclick="" ondblclick=""
+								onmouseover="showEditImage('4855974984280328566')"
+								onmouseout="removeEditImage('4855974984280328566')">
+								<td align="center" class="sort">
+									<span class="inline-block state_online_0" style="margin-bottom: 0px;"></span>
+								</td>
+								<td class="sort">
+									李英
+								</td>
+								<td class=" sort">
+									TC0102&nbsp;
+								</td>
+								<td class=" sort">
+									产品管理员&nbsp;
+								</td>
+							</tr>
+							<tr height="25" class="sort cursor-hand" onclick="" ondblclick=""
+								onmouseover="showEditImage('2917617805347602994')"
+								onmouseout="removeEditImage('2917617805347602994')">
+								<td align="center" class="sort">
+									<span class="inline-block state_online_0" style="margin-bottom: 0px;"></span>
+								</td>
+								<td class="sort">
+									金军辉
+								</td>
+								<td class=" sort">
+									TC0102&nbsp;
+								</td>
+								<td class=" sort">
+									项目总监&nbsp;
+								</td>
+							</tr>
+							<tr height="25" class="sort cursor-hand" onclick="" ondblclick=""
+								onmouseover="showEditImage('3531426670963082948')"
+								onmouseout="removeEditImage('3531426670963082948')">
+								<td align="center" class="sort">
+									<span class="inline-block state_online_0" style="margin-bottom: 0px;"></span>
+								</td>
+								<td class="sort">
+									肖燚
+								</td>
+								<td class=" sort">
+									TC0102&nbsp;
+								</td>
+								<td class=" sort">
+									软件开发&nbsp;
+								</td>
+							</tr>
+							<tr height="25" class="sort cursor-hand" onclick="" ondblclick=""
+								onmouseover="showEditImage('-4951071682394568773')"
+								onmouseout="removeEditImage('-4951071682394568773')">
+								<td align="center" class="sort">
+									<span class="inline-block state_online_0" style="margin-bottom: 0px;"></span>
+								</td>
+								<td class="sort">
+									徐沁妍
+								</td>
+								<td class=" sort">
+									OGM&nbsp;
+								</td>
+								<td class=" sort">
+									行政&nbsp;
+								</td>
+							</tr>
+							<tr height="25" class="sort cursor-hand" onclick="" ondblclick=""
+								onmouseover="showEditImage('-4724614720942946204')"
+								onmouseout="removeEditImage('-4724614720942946204')">
+								<td align="center" class="sort">
+									<span class="inline-block state_online_0" style="margin-bottom: 0px;"></span>
+								</td>
+								<td class="sort">
+									刘玉兰
+								</td>
+								<td class=" sort">
+									HR&nbsp;
+								</td>
+								<td class=" sort">
+									招聘&nbsp;
+								</td>
+							</tr>
+							<tr height="25" class="sort cursor-hand" onclick="" ondblclick=""
+								onmouseover="showEditImage('-3583450780859809250')"
+								onmouseout="removeEditImage('-3583450780859809250')">
+								<td align="center" class="sort">
+									<span class="inline-block state_online_0" style="margin-bottom: 0px;"></span>
+								</td>
+								<td class="sort">
+									周雯游
+								</td>
+								<td class=" sort">
+									OBD&nbsp;
+								</td>
+								<td class=" sort">
+									部门助理&nbsp;
+								</td>
+							</tr>
+							<tr height="25" class="sort cursor-hand" onclick="" ondblclick=""
+								onmouseover="showEditImage('-7104422986886066943')"
+								onmouseout="removeEditImage('-7104422986886066943')">
+								<td align="center" class="sort">
+									<span class="inline-block state_online_0" style="margin-bottom: 0px;"></span>
+								</td>
+								<td class="sort">
+									路婷婷
+								</td>
+								<td class=" sort">
+									BMC02&nbsp;
+								</td>
+								<td class=" sort">
+									商务&nbsp;
+								</td>
+							</tr>
+							<tr height="25" class="sort cursor-hand" onclick="" ondblclick=""
+								onmouseover="showEditImage('4967963088445917163')"
+								onmouseout="removeEditImage('4967963088445917163')">
+								<td align="center" class="sort">
+									<span class="inline-block state_online_0" style="margin-bottom: 0px;"></span>
+								</td>
+								<td class="sort">
+									韩雪
+								</td>
+								<td class=" sort">
+									QM&nbsp;
+								</td>
+								<td class=" sort">
+									质量主管&nbsp;
+								</td>
+							</tr>
+							<tr height="25" class="sort cursor-hand" onclick="" ondblclick=""
+								onmouseover="showEditImage('9058207321881266271')"
+								onmouseout="removeEditImage('9058207321881266271')">
+								<td align="center" class="sort">
+									<span class="mobileOnline inline-block" style="margin-bottom: 0px;"></span>
+								</td>
+								<td class="sort">
+									朱丁超
+								</td>
+								<td class=" sort">
+									TC0201&nbsp;
+								</td>
+								<td class=" sort">
+									桌面终端&nbsp;
+								</td>
+							</tr>
+							<tr height="25" class="sort cursor-hand" onclick="" ondblclick=""
+								onmouseover="showEditImage('830086925223086217')"
+								onmouseout="removeEditImage('830086925223086217')">
+								<td align="center" class="sort">
+									<span class="inline-block state_online_0" style="margin-bottom: 0px;"></span>
+								</td>
+								<td class="sort">
+									李娅霜
+								</td>
+								<td class=" sort">
+									TC0102&nbsp;
+								</td>
+								<td class=" sort">
+									软件开发&nbsp;
+								</td>
+							</tr>
+							<tr height="25" class="sort cursor-hand" onclick="" ondblclick=""
+								onmouseover="showEditImage('8338942613544845445')"
+								onmouseout="removeEditImage('8338942613544845445')">
+								<td align="center" class="sort">
+									<span class="inline-block state_online_0" style="margin-bottom: 0px;"></span>
+								</td>
+								<td class="sort">
+									陈恒东
+								</td>
+								<td class=" sort">
+									TC0201&nbsp;
+								</td>
+								<td class=" sort">
+									项目经理&nbsp;
+								</td>
+							</tr>
+							<tr height="25" class="sort cursor-hand" onclick="" ondblclick=""
+								onmouseover="showEditImage('-6578850808673384831')"
+								onmouseout="removeEditImage('-6578850808673384831')">
+								<td align="center" class="sort">
+									<span class="inline-block state_online_0" style="margin-bottom: 0px;"></span>
+								</td>
+								<td class="sort">
+									oa3
+								</td>
+								<td class=" sort">
+									OGM&nbsp;
+								</td>
+								<td class=" sort">
+									未知&nbsp;
+								</td>
+							</tr>
+							<tr height="25" class="sort cursor-hand" onclick="" ondblclick=""
+								onmouseover="showEditImage('-9061370999644470938')"
+								onmouseout="removeEditImage('-9061370999644470938')">
+								<td align="center" class="sort">
+									<span class="mobileOnline inline-block" style="margin-bottom: 0px;"></span>
+								</td>
+								<td class="sort">
+									高鹏飞
+								</td>
+								<td class=" sort">
+									TC0202&nbsp;
+								</td>
+								<td class=" sort">
+									软件开发&nbsp;
+								</td>
+							</tr>
+							<tr height="25" class="sort cursor-hand" onclick="" ondblclick=""
+								onmouseover="showEditImage('-604805350674772436')"
+								onmouseout="removeEditImage('-604805350674772436')">
+								<td align="center" class="sort">
+									<span class="inline-block state_online_0" style="margin-bottom: 0px;"></span>
+								</td>
+								<td class="sort">
+									陈涛
+								</td>
+								<td class=" sort">
+									TC0201&nbsp;
+								</td>
+								<td class=" sort">
+									软件运维&nbsp;
+								</td>
+							</tr>
+							<tr height="25" class="sort cursor-hand" onclick="" ondblclick=""
+								onmouseover="showEditImage('3835842510084328742')"
+								onmouseout="removeEditImage('3835842510084328742')">
+								<td align="center" class="sort">
+									<span class="inline-block state_online_0" style="margin-bottom: 0px;"></span>
+								</td>
+								<td class="sort">
+									徐菁
+								</td>
+								<td class=" sort">
+									TC0201&nbsp;
+								</td>
+								<td class=" sort">
+									系统运维&nbsp;
+								</td>
+							</tr>
+							<tr height="25" class="sort cursor-hand" onclick="" ondblclick=""
+								onmouseover="showEditImage('5832605652751172307')"
+								onmouseout="removeEditImage('5832605652751172307')">
+								<td align="center" class="sort">
+									<span class="mobileOnline inline-block" style="margin-bottom: 0px;"></span>
+								</td>
+								<td class="sort">
+									刘奔
+								</td>
+								<td class=" sort">
+									TC0202&nbsp;
+								</td>
+								<td class=" sort">
+									系统运维&nbsp;
+								</td>
+							</tr>
+							<tr height="25" class="sort cursor-hand" onclick="" ondblclick=""
+								onmouseover="showEditImage('-3298043063824856182')"
+								onmouseout="removeEditImage('-3298043063824856182')">
+								<td align="center" class="sort">
+									<span class="inline-block state_online_0" style="margin-bottom: 0px;"></span>
+								</td>
+								<td class="sort">
+									陈伶聪
+								</td>
+								<td class=" sort">
+									QM&nbsp;
+								</td>
+								<td class=" sort">
+									质量工程师&nbsp;
+								</td>
+							</tr>
+							<tr height="25" class="sort cursor-hand" onclick="" ondblclick=""
+								onmouseover="showEditImage('589498315166335281')"
+								onmouseout="removeEditImage('589498315166335281')">
+								<td align="center" class="sort">
+									<span class="inline-block state_online_0" style="margin-bottom: 0px;"></span>
+								</td>
+								<td class="sort">
+									杜苓琪
+								</td>
+								<td class=" sort">
+									BMC01&nbsp;
+								</td>
+								<td class=" sort">
+									销售&nbsp;
+								</td>
+							</tr>
+							<tr height="25" class="sort cursor-hand" onclick="" ondblclick=""
+								onmouseover="showEditImage('-8702007636164260661')"
+								onmouseout="removeEditImage('-8702007636164260661')">
+								<td align="center" class="sort">
+									<span class="inline-block state_online_0" style="margin-bottom: 0px;"></span>
+								</td>
+								<td class="sort">
+									陈敬文
+								</td>
+								<td class=" sort">
+									OGM&nbsp;
+								</td>
+								<td class=" sort">
+									法务&nbsp;
+								</td>
+							</tr>
+							<tr height="25" class="sort cursor-hand" onclick="" ondblclick=""
+								onmouseover="showEditImage('-3606369528033493')"
+								onmouseout="removeEditImage('-3606369528033493')">
+								<td align="center" class="sort">
+									<span class="inline-block state_online_0" style="margin-bottom: 0px;"></span>
+								</td>
+								<td class="sort">
+									陶亮
+								</td>
+								<td class=" sort">
+									TC0201&nbsp;
+								</td>
+								<td class=" sort">
+									系统运维&nbsp;
+								</td>
+							</tr>
+							<tr height="25" class="sort cursor-hand" onclick="" ondblclick="" onmouseover=""
+								onmouseout="">
+								<td align="center" class="sort">
+									<span class="inline-block state_online_0" style="margin-bottom: 0px;"></span>
+								</td>
+								<td class="sort">
+									朱常乐
+								</td>
+								<td class=" sort">
+									TC0102&nbsp;
+								</td>
+								<td class=" sort">
+									前端开发&nbsp;
+								</td>
+							</tr>
+							<tr height="25" class="sort cursor-hand" onclick="" ondblclick=""
+								onmouseover="showEditImage('-388952463716694507')"
+								onmouseout="removeEditImage('-388952463716694507')">
+								<td align="center" class="sort">
+									<span class="inline-block state_online_0" style="margin-bottom: 0px;"></span>
+								</td>
+								<td class="sort">
+									刘昊炎
+								</td>
+								<td class=" sort">
+									TC0201&nbsp;
+								</td>
+								<td class=" sort">
+									软件开发&nbsp;
+								</td>
+							</tr>
+							<tr height="25" class="sort cursor-hand" onclick="" ondblclick=""
+								onmouseover="showEditImage('-2803613382931692712')"
+								onmouseout="removeEditImage('-2803613382931692712')">
+								<td align="center" class="sort">
+									<span class="inline-block state_online_0" style="margin-bottom: 0px;"></span>
+								</td>
+								<td class="sort">
+									陈海洋
+								</td>
+								<td class=" sort">
+									IT&nbsp;
+								</td>
+								<td class=" sort">
+									IT工程师&nbsp;
+								</td>
+							</tr>
+							<tr height="25" class="sort cursor-hand" onclick="" ondblclick=""
+								onmouseover="showEditImage('5818795519463542642')"
+								onmouseout="removeEditImage('5818795519463542642')">
+								<td align="center" class="sort">
+									<span class="inline-block state_online_0" style="margin-bottom: 0px;"></span>
+								</td>
+								<td class="sort">
+									王佳琪
+								</td>
+								<td class=" sort">
+									HR&nbsp;
+								</td>
+								<td class=" sort">
+									人事事务员&nbsp;
+								</td>
+							</tr>
+							<tr height="25" class="sort cursor-hand" onclick="" ondblclick=""
+								onmouseover="showEditImage('-3820899251720403107')"
+								onmouseout="removeEditImage('-3820899251720403107')">
+								<td align="center" class="sort">
+									<span class="inline-block state_online_0" style="margin-bottom: 0px;"></span>
+								</td>
+								<td class="sort">
+									安危
+								</td>
+								<td class=" sort">
+									TC0201&nbsp;
+								</td>
+								<td class=" sort">
+									软件开发&nbsp;
+								</td>
+							</tr>
+							<tr height="25" class="sort cursor-hand" onclick="" ondblclick=""
+								onmouseover="showEditImage('5540832098483258426')"
+								onmouseout="removeEditImage('5540832098483258426')">
+								<td align="center" class="sort">
+									<span class="inline-block state_online_0" style="margin-bottom: 0px;"></span>
+								</td>
+								<td class="sort">
+									韦筱西
+								</td>
+								<td class=" sort">
+									TC0201&nbsp;
+								</td>
+								<td class=" sort">
+									需求实施&nbsp;
+								</td>
+							</tr>
+							<tr height="25" class="sort cursor-hand" onclick="" ondblclick=""
+								onmouseover="showEditImage('178524846038206912')"
+								onmouseout="removeEditImage('178524846038206912')">
+								<td align="center" class="sort">
+									<span class="mobileOnline inline-block" style="margin-bottom: 0px;"></span>
+								</td>
+								<td class="sort">
+									王广超
+								</td>
+								<td class=" sort">
+									TC0201&nbsp;
+								</td>
+								<td class=" sort">
+									软件开发&nbsp;
+								</td>
+							</tr>
+							<tr height="25" class="sort cursor-hand" onclick="" ondblclick=""
+								onmouseover="showEditImage('1010205820640837986')"
+								onmouseout="removeEditImage('1010205820640837986')">
+								<td align="center" class="sort">
+									<span class="inline-block state_online_0" style="margin-bottom: 0px;"></span>
+								</td>
+								<td class="sort">
+									汤晓昱
+								</td>
+								<td class=" sort">
+									TC0201&nbsp;
+								</td>
+								<td class=" sort">
+									未知&nbsp;
+								</td>
+							</tr>
+							<tr height="25" class="sort cursor-hand" onclick="" ondblclick=""
+								onmouseover="showEditImage('-5887064044414941354')"
+								onmouseout="removeEditImage('-5887064044414941354')">
+								<td align="center" class="sort">
+									<span class="inline-block state_online_0" style="margin-bottom: 0px;"></span>
+								</td>
+								<td class="sort">
+									刘柯
+								</td>
+								<td class=" sort">
+									TC0202&nbsp;
+								</td>
+								<td class=" sort">
+									项目经理&nbsp;
+								</td>
+							</tr>
+							<tr height="25" class="sort cursor-hand" onclick="" ondblclick=""
+								onmouseover="showEditImage('-2454523535161668813')"
+								onmouseout="removeEditImage('-2454523535161668813')">
+								<td align="center" class="sort">
+									<span class="inline-block state_online_0" style="margin-bottom: 0px;"></span>
+								</td>
+								<td class="sort">
+									费振江
+								</td>
+								<td class=" sort">
+									IT&nbsp;
+								</td>
+								<td class=" sort">
+									IT主管&nbsp;
+								</td>
+							</tr>
+							<tr height="25" class="sort cursor-hand" onclick="" ondblclick=""
+								onmouseover="showEditImage('6816032791974203301')"
+								onmouseout="removeEditImage('6816032791974203301')">
+								<td align="center" class="sort">
+									<span class="inline-block state_online_0" style="margin-bottom: 0px;"></span>
+								</td>
+								<td class="sort">
+									谢俊梁
+								</td>
+								<td class=" sort">
+									HR&nbsp;
+								</td>
+								<td class=" sort">
+									HRBP&nbsp;
+								</td>
+							</tr>
+							<tr height="25" class="sort cursor-hand" onclick="" ondblclick=""
+								onmouseover="showEditImage('3877071240469826477')"
+								onmouseout="removeEditImage('3877071240469826477')">
+								<td align="center" class="sort">
+									<span class="inline-block state_online_0" style="margin-bottom: 0px;"></span>
+								</td>
+								<td class="sort">
+									付以宁
+								</td>
+								<td class=" sort">
+									TC0201&nbsp;
+								</td>
+								<td class=" sort">
+									软件运维&nbsp;
+								</td>
+							</tr>
+							<tr height="25" class="sort cursor-hand" onclick="" ondblclick=""
+								onmouseover="showEditImage('-1813684640636190582')"
+								onmouseout="removeEditImage('-1813684640636190582')">
+								<td align="center" class="sort">
+									<span class="mobileOnline inline-block" style="margin-bottom: 0px;"></span>
+								</td>
+								<td class="sort">
+									曹达
+								</td>
+								<td class=" sort">
+									TC0201&nbsp;
+								</td>
+								<td class=" sort">
+									软件开发&nbsp;
+								</td>
+							</tr>
+							<tr height="25" class="sort cursor-hand" onclick="" ondblclick=""
+								onmouseover="showEditImage('3301095676509177489')"
+								onmouseout="removeEditImage('3301095676509177489')">
+								<td align="center" class="sort">
+									<span class="inline-block state_online_0" style="margin-bottom: 0px;"></span>
+								</td>
+								<td class="sort">
+									陈奕霖
+								</td>
+								<td class=" sort">
+									OGM&nbsp;
+								</td>
+								<td class=" sort">
+									行政&nbsp;
+								</td>
+							</tr>
+							<tr height="25" class="sort cursor-hand" onclick="" ondblclick=""
+								onmouseover="showEditImage('5249266742306948784')"
+								onmouseout="removeEditImage('5249266742306948784')">
+								<td align="center" class="sort">
+									<span class="inline-block state_online_0" style="margin-bottom: 0px;"></span>
+								</td>
+								<td class="sort">
+									陈妍倢
+								</td>
+								<td class=" sort">
+									FIN&nbsp;
+								</td>
+								<td class=" sort">
+									会计&nbsp;
+								</td>
+							</tr>
+							<tr height="25" class="sort cursor-hand" onclick="" ondblclick=""
+								onmouseover="showEditImage('-792813378782739976')"
+								onmouseout="removeEditImage('-792813378782739976')">
+								<td align="center" class="sort">
+									<span class="inline-block state_online_0" style="margin-bottom: 0px;"></span>
+								</td>
+								<td class="sort">
+									贺冰磊
+								</td>
+								<td class=" sort">
+									TC0201&nbsp;
+								</td>
+								<td class=" sort">
+									软件开发&nbsp;
+								</td>
+							</tr>
+							<tr height="25" class="sort cursor-hand" onclick="" ondblclick=""
+								onmouseover="showEditImage('-7151341342591138680')"
+								onmouseout="removeEditImage('-7151341342591138680')">
+								<td align="center" class="sort">
+									<span class="inline-block state_online_0" style="margin-bottom: 0px;"></span>
+								</td>
+								<td class="sort">
+									刘艳山
+								</td>
+								<td class=" sort">
+									TC0201&nbsp;
+								</td>
+								<td class=" sort">
+									软件开发&nbsp;
+								</td>
+							</tr>
+							<tr height="25" class="sort cursor-hand" onclick="" ondblclick=""
+								onmouseover="showEditImage('-185375031061885434')"
+								onmouseout="removeEditImage('-185375031061885434')">
+								<td align="center" class="sort">
+									<span class="mobileOnline inline-block" style="margin-bottom: 0px;"></span>
+								</td>
+								<td class="sort">
+									吕喆
+								</td>
+								<td class=" sort">
+									TC0202&nbsp;
+								</td>
+								<td class=" sort">
+									交互设计&nbsp;
+								</td>
+							</tr>
+							<tr height="25" class="sort cursor-hand" onclick="" ondblclick=""
+								onmouseover="showEditImage('-5677667574833790642')"
+								onmouseout="removeEditImage('-5677667574833790642')">
+								<td align="center" class="sort">
+									<span class="inline-block state_online_0" style="margin-bottom: 0px;"></span>
+								</td>
+								<td class="sort">
+									张涛
+								</td>
+								<td class=" sort">
+									TC0201&nbsp;
+								</td>
+								<td class=" sort">
+									前端开发&nbsp;
+								</td>
+							</tr>
+							<tr height="25" class="sort cursor-hand" onclick="" ondblclick=""
+								onmouseover="showEditImage('-7750083686087441775')"
+								onmouseout="removeEditImage('-7750083686087441775')">
+								<td align="center" class="sort">
+									<span class="inline-block state_online_0" style="margin-bottom: 0px;"></span>
+								</td>
+								<td class="sort">
+									涂鏊飞
+								</td>
+								<td class=" sort">
+									TC0102&nbsp;
+								</td>
+								<td class=" sort">
+									软件开发&nbsp;
+								</td>
+							</tr>
+							<tr height="25" class="sort cursor-hand" onclick="" ondblclick=""
+								onmouseover="showEditImage('2772669348053336350')"
+								onmouseout="removeEditImage('2772669348053336350')">
+								<td align="center" class="sort">
+									<span class="inline-block state_online_0" style="margin-bottom: 0px;"></span>
+								</td>
+								<td class="sort">
+									赵琳
+								</td>
+								<td class=" sort">
+									FIN&nbsp;
+								</td>
+								<td class=" sort">
+									出纳&nbsp;
+								</td>
+							</tr>
+							<tr height="25" class="sort cursor-hand" onclick="" ondblclick=""
+								onmouseover="showEditImage('6105525179975091531')"
+								onmouseout="removeEditImage('6105525179975091531')">
+								<td align="center" class="sort">
+									<span class="mobileOnline inline-block" style="margin-bottom: 0px;"></span>
+								</td>
+								<td class="sort">
+									陈都
+								</td>
+								<td class=" sort">
+									TC0202&nbsp;
+								</td>
+								<td class=" sort">
+									大数据专家服务&nbsp;
+								</td>
+							</tr>
+							<tr height="25" class="sort cursor-hand" onclick="" ondblclick=""
+								onmouseover="showEditImage('929560018747540837')"
+								onmouseout="removeEditImage('929560018747540837')">
+								<td align="center" class="sort">
+									<span class="mobileOnline inline-block" style="margin-bottom: 0px;"></span>
+								</td>
+								<td class="sort">
+									张浩
+								</td>
+								<td class=" sort">
+									TC0202&nbsp;
+								</td>
+								<td class=" sort">
+									前端开发&nbsp;
+								</td>
+							</tr>
+							<tr height="25" class="sort cursor-hand" onclick="" ondblclick=""
+								onmouseover="showEditImage('-602072532867397711')"
+								onmouseout="removeEditImage('-602072532867397711')">
+								<td align="center" class="sort">
+									<span class="inline-block state_online_0" style="margin-bottom: 0px;"></span>
+								</td>
+								<td class="sort">
+									雷浩文
+								</td>
+								<td class=" sort">
+									TC0201&nbsp;
+								</td>
+								<td class=" sort">
+									软件开发&nbsp;
+								</td>
+							</tr>
+							<tr height="25" class="sort cursor-hand" onclick="" ondblclick=""
+								onmouseover="showEditImage('-6829791090024364341')"
+								onmouseout="removeEditImage('-6829791090024364341')">
+								<td align="center" class="sort">
+									<span class="mobileOnline inline-block" style="margin-bottom: 0px;"></span>
+								</td>
+								<td class="sort">
+									李文慧
+								</td>
+								<td class=" sort">
+									TC0202&nbsp;
+								</td>
+								<td class=" sort">
+									数据开发&nbsp;
+								</td>
+							</tr>
+							<tr height="25" class="sort cursor-hand" onclick="" ondblclick=""
+								onmouseover="showEditImage('6263396527316485617')"
+								onmouseout="removeEditImage('6263396527316485617')">
+								<td align="center" class="sort">
+									<span class="inline-block state_online_0" style="margin-bottom: 0px;"></span>
+								</td>
+								<td class="sort">
+									刘高航
+								</td>
+								<td class=" sort">
+									TC0202&nbsp;
+								</td>
+								<td class=" sort">
+									交互设计&nbsp;
+								</td>
+							</tr>
+							<tr height="25" class="sort cursor-hand" onclick="" ondblclick=""
+								onmouseover="showEditImage('-8771186373435962455')"
+								onmouseout="removeEditImage('-8771186373435962455')">
+								<td align="center" class="sort">
+									<span class="mobileOnline inline-block" style="margin-bottom: 0px;"></span>
+								</td>
+								<td class="sort">
+									余以恒
+								</td>
+								<td class=" sort">
+									TC0202&nbsp;
+								</td>
+								<td class=" sort">
+									数据开发&nbsp;
+								</td>
+							</tr>
+							<tr id="off-8764377186129459526" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('-8764377186129459526')"
+								onmouseout="removeEditImage('-8764377186129459526')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									茆宇忠
+								</td>
+								<td class=" sort">
+									OBD&nbsp;
+								</td>
+								<td class=" sort">
+									未知&nbsp;
+								</td>
+							</tr>
+							<tr id="off1272446118655838839" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('1272446118655838839')"
+								onmouseout="removeEditImage('1272446118655838839')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									徐诚
+								</td>
+								<td class=" sort">
+									TC0102&nbsp;
+								</td>
+								<td class=" sort">
+									项目经理&nbsp;
+								</td>
+							</tr>
+							<tr id="off-1383472427114542118" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('-1383472427114542118')"
+								onmouseout="removeEditImage('-1383472427114542118')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									沈艳华
+								</td>
+								<td class=" sort">
+									TC0102&nbsp;
+								</td>
+								<td class=" sort">
+									需求实施&nbsp;
+								</td>
+							</tr>
+							<tr id="off-5991161068831095407" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('-5991161068831095407')"
+								onmouseout="removeEditImage('-5991161068831095407')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									方晨
+								</td>
+								<td class=" sort">
+									TC0102&nbsp;
+								</td>
+								<td class=" sort">
+									需求实施&nbsp;
+								</td>
+							</tr>
+							<tr id="off-3794321500802301621" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('-3794321500802301621')"
+								onmouseout="removeEditImage('-3794321500802301621')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									陆舟
+								</td>
+								<td class=" sort">
+									TC0202&nbsp;
+								</td>
+								<td class=" sort">
+									事业部总经理&nbsp;
+								</td>
+							</tr>
+							<tr id="off-3840002396980165765" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('-3840002396980165765')"
+								onmouseout="removeEditImage('-3840002396980165765')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									卞惠伟
+								</td>
+								<td class=" sort">
+									TC0102&nbsp;
+								</td>
+								<td class=" sort">
+									软件开发&nbsp;
+								</td>
+							</tr>
+							<tr id="off7196277565260776884" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('7196277565260776884')"
+								onmouseout="removeEditImage('7196277565260776884')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									佘俊
+								</td>
+								<td class=" sort">
+									BMC03&nbsp;
+								</td>
+								<td class=" sort">
+									事业部总经理&nbsp;
+								</td>
+							</tr>
+							<tr id="off5096191797357333960" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('5096191797357333960')"
+								onmouseout="removeEditImage('5096191797357333960')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									冯志欣
+								</td>
+								<td class=" sort">
+									TC0102&nbsp;
+								</td>
+								<td class=" sort">
+									售前&nbsp;
+								</td>
+							</tr>
+							<tr id="off2233483987720555079" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('2233483987720555079')"
+								onmouseout="removeEditImage('2233483987720555079')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									刘蓓
+								</td>
+								<td class=" sort">
+									BMC03&nbsp;
+								</td>
+								<td class=" sort">
+									部门助理&nbsp;
+								</td>
+							</tr>
+							<tr id="off3344578353198813170" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('3344578353198813170')"
+								onmouseout="removeEditImage('3344578353198813170')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									蔡勇
+								</td>
+								<td class=" sort">
+									TC0201&nbsp;
+								</td>
+								<td class=" sort">
+									项目经理&nbsp;
+								</td>
+							</tr>
+							<tr id="off-6455041732754649722" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('-6455041732754649722')"
+								onmouseout="removeEditImage('-6455041732754649722')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									曹晶
+								</td>
+								<td class=" sort">
+									TC0102&nbsp;
+								</td>
+								<td class=" sort">
+									系统运维&nbsp;
+								</td>
+							</tr>
+							<tr id="off1736098406049465670" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('1736098406049465670')"
+								onmouseout="removeEditImage('1736098406049465670')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									刘怡
+								</td>
+								<td class=" sort">
+									TC0201&nbsp;
+								</td>
+								<td class=" sort">
+									系统运维&nbsp;
+								</td>
+							</tr>
+							<tr id="off-4149391284313699721" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('-4149391284313699721')"
+								onmouseout="removeEditImage('-4149391284313699721')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									何玉叶
+								</td>
+								<td class=" sort">
+									TC0102&nbsp;
+								</td>
+								<td class=" sort">
+									软件开发&nbsp;
+								</td>
+							</tr>
+							<tr id="off-279898716992944213" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('-279898716992944213')"
+								onmouseout="removeEditImage('-279898716992944213')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									陈渊
+								</td>
+								<td class=" sort">
+									TC0201&nbsp;
+								</td>
+								<td class=" sort">
+									项目总监&nbsp;
+								</td>
+							</tr>
+							<tr id="off3137301212424589223" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('3137301212424589223')"
+								onmouseout="removeEditImage('3137301212424589223')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									罗荣华
+								</td>
+								<td class=" sort">
+									TC0102&nbsp;
+								</td>
+								<td class=" sort">
+									需求实施&nbsp;
+								</td>
+							</tr>
+							<tr id="off-5301369606054130806" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('-5301369606054130806')"
+								onmouseout="removeEditImage('-5301369606054130806')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									郑海峰
+								</td>
+								<td class=" sort">
+									TC0201&nbsp;
+								</td>
+								<td class=" sort">
+									软件开发&nbsp;
+								</td>
+							</tr>
+							<tr id="off-8530661874360825595" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('-8530661874360825595')"
+								onmouseout="removeEditImage('-8530661874360825595')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									陈金龙
+								</td>
+								<td class=" sort">
+									TC0201&nbsp;
+								</td>
+								<td class=" sort">
+									项目经理&nbsp;
+								</td>
+							</tr>
+							<tr id="off292752847740879720" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('292752847740879720')"
+								onmouseout="removeEditImage('292752847740879720')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									毛学宁
+								</td>
+								<td class=" sort">
+									MKT&nbsp;
+								</td>
+								<td class=" sort">
+									市场&nbsp;
+								</td>
+							</tr>
+							<tr id="off-3464053998709945629" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('-3464053998709945629')"
+								onmouseout="removeEditImage('-3464053998709945629')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									余海林
+								</td>
+								<td class=" sort">
+									TC0201&nbsp;
+								</td>
+								<td class=" sort">
+									项目经理&nbsp;
+								</td>
+							</tr>
+							<tr id="off2111839009507328196" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('2111839009507328196')"
+								onmouseout="removeEditImage('2111839009507328196')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									张琦
+								</td>
+								<td class=" sort">
+									TC0102&nbsp;
+								</td>
+								<td class=" sort">
+									需求实施&nbsp;
+								</td>
+							</tr>
+							<tr id="off-7309556506554118846" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('-7309556506554118846')"
+								onmouseout="removeEditImage('-7309556506554118846')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									吴燕雯
+								</td>
+								<td class=" sort">
+									OBD&nbsp;
+								</td>
+								<td class=" sort">
+									未知&nbsp;
+								</td>
+							</tr>
+							<tr id="off-2483752803871536627" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('-2483752803871536627')"
+								onmouseout="removeEditImage('-2483752803871536627')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									蔡培良
+								</td>
+								<td class=" sort">
+									TC0201&nbsp;
+								</td>
+								<td class=" sort">
+									桌面终端&nbsp;
+								</td>
+							</tr>
+							<tr id="off-4950968464498867433" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('-4950968464498867433')"
+								onmouseout="removeEditImage('-4950968464498867433')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									彭钰卓
+								</td>
+								<td class=" sort">
+									TC0102&nbsp;
+								</td>
+								<td class=" sort">
+									软件开发&nbsp;
+								</td>
+							</tr>
+							<tr id="off8422421272847860683" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('8422421272847860683')"
+								onmouseout="removeEditImage('8422421272847860683')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									毛晨
+								</td>
+								<td class=" sort">
+									TC0102&nbsp;
+								</td>
+								<td class=" sort">
+									项目经理&nbsp;
+								</td>
+							</tr>
+							<tr id="off5042256311410508764" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('5042256311410508764')"
+								onmouseout="removeEditImage('5042256311410508764')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									顾怀建
+								</td>
+								<td class=" sort">
+									TC0102&nbsp;
+								</td>
+								<td class=" sort">
+									项目总监&nbsp;
+								</td>
+							</tr>
+							<tr id="off289041359616557972" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('289041359616557972')"
+								onmouseout="removeEditImage('289041359616557972')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									朱佳颖
+								</td>
+								<td class=" sort">
+									OGM&nbsp;
+								</td>
+								<td class=" sort">
+									部门助理&nbsp;
+								</td>
+							</tr>
+							<tr id="off5787631499687513770" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('5787631499687513770')"
+								onmouseout="removeEditImage('5787631499687513770')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									王红业
+								</td>
+								<td class=" sort">
+									TC0201&nbsp;
+								</td>
+								<td class=" sort">
+									需求实施&nbsp;
+								</td>
+							</tr>
+							<tr id="off5538453565865870304" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('5538453565865870304')"
+								onmouseout="removeEditImage('5538453565865870304')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									左小飞
+								</td>
+								<td class=" sort">
+									TC0201&nbsp;
+								</td>
+								<td class=" sort">
+									需求实施&nbsp;
+								</td>
+							</tr>
+							<tr id="off-7420399014444515083" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('-7420399014444515083')"
+								onmouseout="removeEditImage('-7420399014444515083')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									王帆
+								</td>
+								<td class=" sort">
+									TC0102&nbsp;
+								</td>
+								<td class=" sort">
+									软件开发&nbsp;
+								</td>
+							</tr>
+							<tr id="off2945295233036666844" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('2945295233036666844')"
+								onmouseout="removeEditImage('2945295233036666844')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									刘杰
+								</td>
+								<td class=" sort">
+									TC0201&nbsp;
+								</td>
+								<td class=" sort">
+									项目经理&nbsp;
+								</td>
+							</tr>
+							<tr id="off-1834732702185666466" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('-1834732702185666466')"
+								onmouseout="removeEditImage('-1834732702185666466')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									蒋庆健
+								</td>
+								<td class=" sort">
+									TC0201&nbsp;
+								</td>
+								<td class=" sort">
+									司机&nbsp;
+								</td>
+							</tr>
+							<tr id="off3003986293053538506" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('3003986293053538506')"
+								onmouseout="removeEditImage('3003986293053538506')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									王季强
+								</td>
+								<td class=" sort">
+									TC0201&nbsp;
+								</td>
+								<td class=" sort">
+									事业部总经理&nbsp;
+								</td>
+							</tr>
+							<tr id="off8678005947891534200" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('8678005947891534200')"
+								onmouseout="removeEditImage('8678005947891534200')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									唐春风
+								</td>
+								<td class=" sort">
+									TC0102&nbsp;
+								</td>
+								<td class=" sort">
+									软件开发&nbsp;
+								</td>
+							</tr>
+							<tr id="off-1547739779836983696" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('-1547739779836983696')"
+								onmouseout="removeEditImage('-1547739779836983696')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									谢佳妮
+								</td>
+								<td class=" sort">
+									BMC01&nbsp;
+								</td>
+								<td class=" sort">
+									销售&nbsp;
+								</td>
+							</tr>
+							<tr id="off-7567346483268137653" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('-7567346483268137653')"
+								onmouseout="removeEditImage('-7567346483268137653')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									林勤
+								</td>
+								<td class=" sort">
+									TC0102&nbsp;
+								</td>
+								<td class=" sort">
+									需求实施&nbsp;
+								</td>
+							</tr>
+							<tr id="off-5704743233873950526" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('-5704743233873950526')"
+								onmouseout="removeEditImage('-5704743233873950526')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									汤丽兰
+								</td>
+								<td class=" sort">
+									FIN&nbsp;
+								</td>
+								<td class=" sort">
+									财务主管&nbsp;
+								</td>
+							</tr>
+							<tr id="off6846756363531927752" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('6846756363531927752')"
+								onmouseout="removeEditImage('6846756363531927752')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									易民
+								</td>
+								<td class=" sort">
+									TC0102&nbsp;
+								</td>
+								<td class=" sort">
+									咨询&nbsp;
+								</td>
+							</tr>
+							<tr id="off-3558166892560694009" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('-3558166892560694009')"
+								onmouseout="removeEditImage('-3558166892560694009')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									孙先波
+								</td>
+								<td class=" sort">
+									TC0102&nbsp;
+								</td>
+								<td class=" sort">
+									软件开发&nbsp;
+								</td>
+							</tr>
+							<tr id="off-8482349309051514927" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('-8482349309051514927')"
+								onmouseout="removeEditImage('-8482349309051514927')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									尹吉磊
+								</td>
+								<td class=" sort">
+									TC0102&nbsp;
+								</td>
+								<td class=" sort">
+									项目经理&nbsp;
+								</td>
+							</tr>
+							<tr id="off353981311813503090" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('353981311813503090')"
+								onmouseout="removeEditImage('353981311813503090')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									何志伟
+								</td>
+								<td class=" sort">
+									TC0102&nbsp;
+								</td>
+								<td class=" sort">
+									软件运维&nbsp;
+								</td>
+							</tr>
+							<tr id="off-4908554917471959469" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('-4908554917471959469')"
+								onmouseout="removeEditImage('-4908554917471959469')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									史诗
+								</td>
+								<td class=" sort">
+									TC0102&nbsp;
+								</td>
+								<td class=" sort">
+									项目经理&nbsp;
+								</td>
+							</tr>
+							<tr id="off-7300801303352883302" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('-7300801303352883302')"
+								onmouseout="removeEditImage('-7300801303352883302')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									谭炯
+								</td>
+								<td class=" sort">
+									TC0102&nbsp;
+								</td>
+								<td class=" sort">
+									项目总监&nbsp;
+								</td>
+							</tr>
+							<tr id="off-9209860695144314126" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('-9209860695144314126')"
+								onmouseout="removeEditImage('-9209860695144314126')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									詹迪扬
+								</td>
+								<td class=" sort">
+									TC0102&nbsp;
+								</td>
+								<td class=" sort">
+									需求实施&nbsp;
+								</td>
+							</tr>
+							<tr id="off-89227969051931489" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('-89227969051931489')"
+								onmouseout="removeEditImage('-89227969051931489')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									朱秀红
+								</td>
+								<td class=" sort">
+									TC0102&nbsp;
+								</td>
+								<td class=" sort">
+									需求实施&nbsp;
+								</td>
+							</tr>
+							<tr id="off-8564136738555539740" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('-8564136738555539740')"
+								onmouseout="removeEditImage('-8564136738555539740')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									陈奇
+								</td>
+								<td class=" sort">
+									TC0201&nbsp;
+								</td>
+								<td class=" sort">
+									系统运维&nbsp;
+								</td>
+							</tr>
+							<tr id="off-72589104001563381" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('-72589104001563381')"
+								onmouseout="removeEditImage('-72589104001563381')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									张勤
+								</td>
+								<td class=" sort">
+									EO&nbsp;
+								</td>
+								<td class=" sort">
+									公司副总经理&nbsp;
+								</td>
+							</tr>
+							<tr id="off2990571867909999201" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('2990571867909999201')"
+								onmouseout="removeEditImage('2990571867909999201')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									张晓瑞
+								</td>
+								<td class=" sort">
+									TC0102&nbsp;
+								</td>
+								<td class=" sort">
+									软件开发&nbsp;
+								</td>
+							</tr>
+							<tr id="off-6897666894291316957" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('-6897666894291316957')"
+								onmouseout="removeEditImage('-6897666894291316957')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									杨友正
+								</td>
+								<td class=" sort">
+									TC0102&nbsp;
+								</td>
+								<td class=" sort">
+									软件开发&nbsp;
+								</td>
+							</tr>
+							<tr id="off-6638469669146899976" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('-6638469669146899976')"
+								onmouseout="removeEditImage('-6638469669146899976')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									熊鹰
+								</td>
+								<td class=" sort">
+									TC0101&nbsp;
+								</td>
+								<td class=" sort">
+									算法/人工智能研发&nbsp;
+								</td>
+							</tr>
+							<tr id="off-4546858906167195594" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('-4546858906167195594')"
+								onmouseout="removeEditImage('-4546858906167195594')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									龚发杰
+								</td>
+								<td class=" sort">
+									TC0202&nbsp;
+								</td>
+								<td class=" sort">
+									软件开发&nbsp;
+								</td>
+							</tr>
+							<tr id="off887167636235044673" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('887167636235044673')"
+								onmouseout="removeEditImage('887167636235044673')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									聂彩霞
+								</td>
+								<td class=" sort">
+									TC0201&nbsp;
+								</td>
+								<td class=" sort">
+									软件运维&nbsp;
+								</td>
+							</tr>
+							<tr id="off-1853210818805743294" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('-1853210818805743294')"
+								onmouseout="removeEditImage('-1853210818805743294')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									陈依
+								</td>
+								<td class=" sort">
+									TC0201&nbsp;
+								</td>
+								<td class=" sort">
+									需求实施&nbsp;
+								</td>
+							</tr>
+							<tr id="off3231182416900868919" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('3231182416900868919')"
+								onmouseout="removeEditImage('3231182416900868919')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									王艺衡
+								</td>
+								<td class=" sort">
+									IT&nbsp;
+								</td>
+								<td class=" sort">
+									系统运维&nbsp;
+								</td>
+							</tr>
+							<tr id="off-2615188423420458872" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('-2615188423420458872')"
+								onmouseout="removeEditImage('-2615188423420458872')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									薛昭辉
+								</td>
+								<td class=" sort">
+									TC0201&nbsp;
+								</td>
+								<td class=" sort">
+									软件开发&nbsp;
+								</td>
+							</tr>
+							<tr id="off6341869924888626105" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('6341869924888626105')"
+								onmouseout="removeEditImage('6341869924888626105')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									王伟
+								</td>
+								<td class=" sort">
+									TC0202&nbsp;
+								</td>
+								<td class=" sort">
+									软件测试&nbsp;
+								</td>
+							</tr>
+							<tr id="off-7006129139333250204" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('-7006129139333250204')"
+								onmouseout="removeEditImage('-7006129139333250204')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									冷运华
+								</td>
+								<td class=" sort">
+									TC0201&nbsp;
+								</td>
+								<td class=" sort">
+									需求实施&nbsp;
+								</td>
+							</tr>
+							<tr id="off2799922097311731291" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('2799922097311731291')"
+								onmouseout="removeEditImage('2799922097311731291')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									章虎
+								</td>
+								<td class=" sort">
+									TC0201&nbsp;
+								</td>
+								<td class=" sort">
+									项目经理&nbsp;
+								</td>
+							</tr>
+							<tr id="off6724123013029972165" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('6724123013029972165')"
+								onmouseout="removeEditImage('6724123013029972165')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									冯胜
+								</td>
+								<td class=" sort">
+									TC0102&nbsp;
+								</td>
+								<td class=" sort">
+									软件开发&nbsp;
+								</td>
+							</tr>
+							<tr id="off-8664614864171741654" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('-8664614864171741654')"
+								onmouseout="removeEditImage('-8664614864171741654')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									曹锐
+								</td>
+								<td class=" sort">
+									TC0102&nbsp;
+								</td>
+								<td class=" sort">
+									软件开发&nbsp;
+								</td>
+							</tr>
+							<tr id="off-2281842171969518281" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('-2281842171969518281')"
+								onmouseout="removeEditImage('-2281842171969518281')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									向伟康
+								</td>
+								<td class=" sort">
+									TC0101&nbsp;
+								</td>
+								<td class=" sort">
+									算法/人工智能研发&nbsp;
+								</td>
+							</tr>
+							<tr id="off-4049128624943315393" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('-4049128624943315393')"
+								onmouseout="removeEditImage('-4049128624943315393')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									朱林
+								</td>
+								<td class=" sort">
+									TC0201&nbsp;
+								</td>
+								<td class=" sort">
+									系统运维&nbsp;
+								</td>
+							</tr>
+							<tr id="off-7557358807534448917" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('-7557358807534448917')"
+								onmouseout="removeEditImage('-7557358807534448917')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									王潼
+								</td>
+								<td class=" sort">
+									TC0102&nbsp;
+								</td>
+								<td class=" sort">
+									软件开发&nbsp;
+								</td>
+							</tr>
+							<tr id="off2241269928423211689" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('2241269928423211689')"
+								onmouseout="removeEditImage('2241269928423211689')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									夏莹
+								</td>
+								<td class=" sort">
+									TC0202&nbsp;
+								</td>
+								<td class=" sort">
+									需求实施&nbsp;
+								</td>
+							</tr>
+							<tr id="off5995780646532172718" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('5995780646532172718')"
+								onmouseout="removeEditImage('5995780646532172718')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									oa1
+								</td>
+								<td class=" sort">
+									OGM&nbsp;
+								</td>
+								<td class=" sort">
+									未知&nbsp;
+								</td>
+							</tr>
+							<tr id="off-8564182944418869829" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('-8564182944418869829')"
+								onmouseout="removeEditImage('-8564182944418869829')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									oa2
+								</td>
+								<td class=" sort">
+									OGM&nbsp;
+								</td>
+								<td class=" sort">
+									未知&nbsp;
+								</td>
+							</tr>
+							<tr id="off68407620365402196" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('68407620365402196')"
+								onmouseout="removeEditImage('68407620365402196')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									许杰
+								</td>
+								<td class=" sort">
+									TC0202&nbsp;
+								</td>
+								<td class=" sort">
+									软件开发&nbsp;
+								</td>
+							</tr>
+							<tr id="off5594639995056377094" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('5594639995056377094')"
+								onmouseout="removeEditImage('5594639995056377094')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									范军
+								</td>
+								<td class=" sort">
+									TC0201&nbsp;
+								</td>
+								<td class=" sort">
+									前端开发&nbsp;
+								</td>
+							</tr>
+							<tr id="off7630548185633148661" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('7630548185633148661')"
+								onmouseout="removeEditImage('7630548185633148661')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									薛玉明
+								</td>
+								<td class=" sort">
+									TC0101&nbsp;
+								</td>
+								<td class=" sort">
+									大数据专家服务&nbsp;
+								</td>
+							</tr>
+							<tr id="off1174840146056070184" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('1174840146056070184')"
+								onmouseout="removeEditImage('1174840146056070184')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									李南
+								</td>
+								<td class=" sort">
+									TC0201&nbsp;
+								</td>
+								<td class=" sort">
+									软件开发&nbsp;
+								</td>
+							</tr>
+							<tr id="off5833863858831048961" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('5833863858831048961')"
+								onmouseout="removeEditImage('5833863858831048961')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									徐凯成
+								</td>
+								<td class=" sort">
+									TC0101&nbsp;
+								</td>
+								<td class=" sort">
+									算法/人工智能研发&nbsp;
+								</td>
+							</tr>
+							<tr id="off-7426886606656025071" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('-7426886606656025071')"
+								onmouseout="removeEditImage('-7426886606656025071')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									杨虎
+								</td>
+								<td class=" sort">
+									TC0201&nbsp;
+								</td>
+								<td class=" sort">
+									软件开发&nbsp;
+								</td>
+							</tr>
+							<tr id="off-6084705181609540143" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('-6084705181609540143')"
+								onmouseout="removeEditImage('-6084705181609540143')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									李俊
+								</td>
+								<td class=" sort">
+									TC0201&nbsp;
+								</td>
+								<td class=" sort">
+									需求实施&nbsp;
+								</td>
+							</tr>
+							<tr id="off2302931028576849064" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('2302931028576849064')"
+								onmouseout="removeEditImage('2302931028576849064')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									胡朝丽
+								</td>
+								<td class=" sort">
+									TC0201&nbsp;
+								</td>
+								<td class=" sort">
+									需求实施&nbsp;
+								</td>
+							</tr>
+							<tr id="off8307014703475867903" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('8307014703475867903')"
+								onmouseout="removeEditImage('8307014703475867903')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									迟浩君
+								</td>
+								<td class=" sort">
+									TC0201&nbsp;
+								</td>
+								<td class=" sort">
+									数据开发&nbsp;
+								</td>
+							</tr>
+							<tr id="off5335282392596104865" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('5335282392596104865')"
+								onmouseout="removeEditImage('5335282392596104865')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									孙明晖
+								</td>
+								<td class=" sort">
+									TC0102&nbsp;
+								</td>
+								<td class=" sort">
+									软件开发&nbsp;
+								</td>
+							</tr>
+							<tr id="off644524045258015395" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('644524045258015395')"
+								onmouseout="removeEditImage('644524045258015395')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									李金凤
+								</td>
+								<td class=" sort">
+									OGM&nbsp;
+								</td>
+								<td class=" sort">
+									劳务&nbsp;
+								</td>
+							</tr>
+							<tr id="off-7034424294922368884" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('-7034424294922368884')"
+								onmouseout="removeEditImage('-7034424294922368884')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									工时管理
+								</td>
+								<td class=" sort">
+									IA&nbsp;
+								</td>
+								<td class=" sort">
+									未知&nbsp;
+								</td>
+							</tr>
+							<tr id="off-7299722655387859997" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('-7299722655387859997')"
+								onmouseout="removeEditImage('-7299722655387859997')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									王莹莹
+								</td>
+								<td class=" sort">
+									TC0201&nbsp;
+								</td>
+								<td class=" sort">
+									软件运维&nbsp;
+								</td>
+							</tr>
+							<tr id="off4435877843608354833" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('4435877843608354833')"
+								onmouseout="removeEditImage('4435877843608354833')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									王海峰
+								</td>
+								<td class=" sort">
+									TC0201&nbsp;
+								</td>
+								<td class=" sort">
+									系统运维&nbsp;
+								</td>
+							</tr>
+							<tr id="off8003042416898361187" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('8003042416898361187')"
+								onmouseout="removeEditImage('8003042416898361187')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									刘云杰
+								</td>
+								<td class=" sort">
+									TC0202&nbsp;
+								</td>
+								<td class=" sort">
+									软件开发&nbsp;
+								</td>
+							</tr>
+							<tr id="off3292451507272567028" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('3292451507272567028')"
+								onmouseout="removeEditImage('3292451507272567028')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									徐伟
+								</td>
+								<td class=" sort">
+									TC0202&nbsp;
+								</td>
+								<td class=" sort">
+									系统运维&nbsp;
+								</td>
+							</tr>
+							<tr id="off3080763142409374305" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('3080763142409374305')"
+								onmouseout="removeEditImage('3080763142409374305')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									刘冬冬
+								</td>
+								<td class=" sort">
+									TC0202&nbsp;
+								</td>
+								<td class=" sort">
+									软件开发&nbsp;
+								</td>
+							</tr>
+							<tr id="off936613713427448189" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('936613713427448189')"
+								onmouseout="removeEditImage('936613713427448189')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									陈毅琦
+								</td>
+								<td class=" sort">
+									TC0201&nbsp;
+								</td>
+								<td class=" sort">
+									系统运维&nbsp;
+								</td>
+							</tr>
+							<tr id="off-1652391746763405913" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('-1652391746763405913')"
+								onmouseout="removeEditImage('-1652391746763405913')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									黄帅
+								</td>
+								<td class=" sort">
+									TSC&nbsp;
+								</td>
+								<td class=" sort">
+									前端开发&nbsp;
+								</td>
+							</tr>
+							<tr id="off7742722240042779732" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('7742722240042779732')"
+								onmouseout="removeEditImage('7742722240042779732')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									陈虎
+								</td>
+								<td class=" sort">
+									TC0202&nbsp;
+								</td>
+								<td class=" sort">
+									系统运维&nbsp;
+								</td>
+							</tr>
+							<tr id="off2200992855355116920" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('2200992855355116920')"
+								onmouseout="removeEditImage('2200992855355116920')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									张雷勇
+								</td>
+								<td class=" sort">
+									TC0102&nbsp;
+								</td>
+								<td class=" sort">
+									软件开发&nbsp;
+								</td>
+							</tr>
+							<tr id="off-1639420122119386843" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('-1639420122119386843')"
+								onmouseout="removeEditImage('-1639420122119386843')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									倪元伟
+								</td>
+								<td class=" sort">
+									TC0201&nbsp;
+								</td>
+								<td class=" sort">
+									系统运维&nbsp;
+								</td>
+							</tr>
+							<tr id="off7874704658833493710" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('7874704658833493710')"
+								onmouseout="removeEditImage('7874704658833493710')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									袁坤
+								</td>
+								<td class=" sort">
+									TC0201&nbsp;
+								</td>
+								<td class=" sort">
+									软件开发&nbsp;
+								</td>
+							</tr>
+							<tr id="off-8699827363690951030" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('-8699827363690951030')"
+								onmouseout="removeEditImage('-8699827363690951030')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									金鹏
+								</td>
+								<td class=" sort">
+									TC0201&nbsp;
+								</td>
+								<td class=" sort">
+									软件开发&nbsp;
+								</td>
+							</tr>
+							<tr id="off-5935707614012617920" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('-5935707614012617920')"
+								onmouseout="removeEditImage('-5935707614012617920')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									李荣秋
+								</td>
+								<td class=" sort">
+									TC0201&nbsp;
+								</td>
+								<td class=" sort">
+									软件开发&nbsp;
+								</td>
+							</tr>
+							<tr id="off-6095135630653961668" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('-6095135630653961668')"
+								onmouseout="removeEditImage('-6095135630653961668')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									马春运
+								</td>
+								<td class=" sort">
+									TC0201&nbsp;
+								</td>
+								<td class=" sort">
+									需求实施&nbsp;
+								</td>
+							</tr>
+							<tr id="off-997371448080185848" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('-997371448080185848')"
+								onmouseout="removeEditImage('-997371448080185848')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									邹天逸
+								</td>
+								<td class=" sort">
+									TC0102&nbsp;
+								</td>
+								<td class=" sort">
+									需求实施&nbsp;
+								</td>
+							</tr>
+							<tr id="off3185122407136579576" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('3185122407136579576')"
+								onmouseout="removeEditImage('3185122407136579576')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									丁党世慧
+								</td>
+								<td class=" sort">
+									FIN&nbsp;
+								</td>
+								<td class=" sort">
+									会计&nbsp;
+								</td>
+							</tr>
+							<tr id="off4576124569889950590" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('4576124569889950590')"
+								onmouseout="removeEditImage('4576124569889950590')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									万艳
+								</td>
+								<td class=" sort">
+									HR&nbsp;
+								</td>
+								<td class=" sort">
+									HRBP&nbsp;
+								</td>
+							</tr>
+							<tr id="off-612583213400898288" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('-612583213400898288')"
+								onmouseout="removeEditImage('-612583213400898288')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									李景
+								</td>
+								<td class=" sort">
+									TC0201&nbsp;
+								</td>
+								<td class=" sort">
+									项目经理&nbsp;
+								</td>
+							</tr>
+							<tr id="off-5571857255569143915" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('-5571857255569143915')"
+								onmouseout="removeEditImage('-5571857255569143915')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									梁奇
+								</td>
+								<td class=" sort">
+									TC0201&nbsp;
+								</td>
+								<td class=" sort">
+									系统运维&nbsp;
+								</td>
+							</tr>
+							<tr id="off2036437342103814913" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('2036437342103814913')"
+								onmouseout="removeEditImage('2036437342103814913')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									车琳
+								</td>
+								<td class=" sort">
+									TC0201&nbsp;
+								</td>
+								<td class=" sort">
+									软件开发&nbsp;
+								</td>
+							</tr>
+							<tr id="off7994816129009861915" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('7994816129009861915')"
+								onmouseout="removeEditImage('7994816129009861915')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									曹家玮
+								</td>
+								<td class=" sort">
+									TC0201&nbsp;
+								</td>
+								<td class=" sort">
+									需求实施&nbsp;
+								</td>
+							</tr>
+							<tr id="off-4621572250803158584" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('-4621572250803158584')"
+								onmouseout="removeEditImage('-4621572250803158584')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									王俊韵
+								</td>
+								<td class=" sort">
+									TC0202&nbsp;
+								</td>
+								<td class=" sort">
+									软件开发&nbsp;
+								</td>
+							</tr>
+							<tr id="off8177162019793619810" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('8177162019793619810')"
+								onmouseout="removeEditImage('8177162019793619810')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									刘娟
+								</td>
+								<td class=" sort">
+									TC0202&nbsp;
+								</td>
+								<td class=" sort">
+									软件开发&nbsp;
+								</td>
+							</tr>
+							<tr id="off-7020065485896726069" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('-7020065485896726069')"
+								onmouseout="removeEditImage('-7020065485896726069')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									秦明智
+								</td>
+								<td class=" sort">
+									TC0201&nbsp;
+								</td>
+								<td class=" sort">
+									需求实施&nbsp;
+								</td>
+							</tr>
+							<tr id="off7864983103741251429" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('7864983103741251429')"
+								onmouseout="removeEditImage('7864983103741251429')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									潘旖
+								</td>
+								<td class=" sort">
+									TC0202&nbsp;
+								</td>
+								<td class=" sort">
+									系统运维&nbsp;
+								</td>
+							</tr>
+							<tr id="off6322783804690285742" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('6322783804690285742')"
+								onmouseout="removeEditImage('6322783804690285742')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									陈周敏
+								</td>
+								<td class=" sort">
+									TC0202&nbsp;
+								</td>
+								<td class=" sort">
+									项目经理&nbsp;
+								</td>
+							</tr>
+							<tr id="off-8667594449999871884" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('-8667594449999871884')"
+								onmouseout="removeEditImage('-8667594449999871884')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									卢海英
+								</td>
+								<td class=" sort">
+									OGM&nbsp;
+								</td>
+								<td class=" sort">
+									劳务&nbsp;
+								</td>
+							</tr>
+							<tr id="off7156499967384898099" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('7156499967384898099')"
+								onmouseout="removeEditImage('7156499967384898099')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									喻能杰
+								</td>
+								<td class=" sort">
+									TC0202&nbsp;
+								</td>
+								<td class=" sort">
+									软件开发&nbsp;
+								</td>
+							</tr>
+							<tr id="off-4702014848396540663" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('-4702014848396540663')"
+								onmouseout="removeEditImage('-4702014848396540663')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									阚广飞
+								</td>
+								<td class=" sort">
+									TC0202&nbsp;
+								</td>
+								<td class=" sort">
+									项目经理&nbsp;
+								</td>
+							</tr>
+							<tr id="off-7742200029350835146" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('-7742200029350835146')"
+								onmouseout="removeEditImage('-7742200029350835146')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									贺强
+								</td>
+								<td class=" sort">
+									TC0202&nbsp;
+								</td>
+								<td class=" sort">
+									软件开发&nbsp;
+								</td>
+							</tr>
+							<tr id="off4380763256547918546" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('4380763256547918546')"
+								onmouseout="removeEditImage('4380763256547918546')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									刘伟壮
+								</td>
+								<td class=" sort">
+									TC0102&nbsp;
+								</td>
+								<td class=" sort">
+									软件开发&nbsp;
+								</td>
+							</tr>
+							<tr id="off-8494283269754172779" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('-8494283269754172779')"
+								onmouseout="removeEditImage('-8494283269754172779')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									陆泽恩
+								</td>
+								<td class=" sort">
+									QM&nbsp;
+								</td>
+								<td class=" sort">
+									OA管理&nbsp;
+								</td>
+							</tr>
+							<tr id="off9040751595956292528" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('9040751595956292528')"
+								onmouseout="removeEditImage('9040751595956292528')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									徐晓亮
+								</td>
+								<td class=" sort">
+									TC0202&nbsp;
+								</td>
+								<td class=" sort">
+									软件开发&nbsp;
+								</td>
+							</tr>
+							<tr id="off4719279986012080050" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('4719279986012080050')"
+								onmouseout="removeEditImage('4719279986012080050')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									吴晓伟
+								</td>
+								<td class=" sort">
+									TC0202&nbsp;
+								</td>
+								<td class=" sort">
+									软件开发&nbsp;
+								</td>
+							</tr>
+							<tr id="off3001255442110695872" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('3001255442110695872')"
+								onmouseout="removeEditImage('3001255442110695872')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									王妍
+								</td>
+								<td class=" sort">
+									TC0202&nbsp;
+								</td>
+								<td class=" sort">
+									软件开发&nbsp;
+								</td>
+							</tr>
+							<tr id="off3456965497519034310" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('3456965497519034310')"
+								onmouseout="removeEditImage('3456965497519034310')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									舒瑶
+								</td>
+								<td class=" sort">
+									TC0202&nbsp;
+								</td>
+								<td class=" sort">
+									软件开发&nbsp;
+								</td>
+							</tr>
+							<tr id="off-7364460094404345580" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('-7364460094404345580')"
+								onmouseout="removeEditImage('-7364460094404345580')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									吴中普
+								</td>
+								<td class=" sort">
+									TC0202&nbsp;
+								</td>
+								<td class=" sort">
+									软件开发&nbsp;
+								</td>
+							</tr>
+							<tr id="off1507668073179531130" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('1507668073179531130')"
+								onmouseout="removeEditImage('1507668073179531130')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									范传承
+								</td>
+								<td class=" sort">
+									TC0202&nbsp;
+								</td>
+								<td class=" sort">
+									软件开发&nbsp;
+								</td>
+							</tr>
+							<tr id="off8067364502420276462" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('8067364502420276462')"
+								onmouseout="removeEditImage('8067364502420276462')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									徐润滨
+								</td>
+								<td class=" sort">
+									TC0202&nbsp;
+								</td>
+								<td class=" sort">
+									软件开发&nbsp;
+								</td>
+							</tr>
+							<tr id="off2438664261391763556" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('2438664261391763556')"
+								onmouseout="removeEditImage('2438664261391763556')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									汪杰
+								</td>
+								<td class=" sort">
+									TC0202&nbsp;
+								</td>
+								<td class=" sort">
+									软件开发&nbsp;
+								</td>
+							</tr>
+							<tr id="off46617658577929682" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('46617658577929682')"
+								onmouseout="removeEditImage('46617658577929682')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									汪伟伟
+								</td>
+								<td class=" sort">
+									TC0202&nbsp;
+								</td>
+								<td class=" sort">
+									软件开发&nbsp;
+								</td>
+							</tr>
+							<tr id="off5542864571866235835" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('5542864571866235835')"
+								onmouseout="removeEditImage('5542864571866235835')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									杨金儒
+								</td>
+								<td class=" sort">
+									TC0202&nbsp;
+								</td>
+								<td class=" sort">
+									数据开发&nbsp;
+								</td>
+							</tr>
+							<tr id="off3951765072084421682" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('3951765072084421682')"
+								onmouseout="removeEditImage('3951765072084421682')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									王勇
+								</td>
+								<td class=" sort">
+									TC0202&nbsp;
+								</td>
+								<td class=" sort">
+									软件开发&nbsp;
+								</td>
+							</tr>
+							<tr id="off-1841559903841729448" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('-1841559903841729448')"
+								onmouseout="removeEditImage('-1841559903841729448')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									奚辉
+								</td>
+								<td class=" sort">
+									TC0202&nbsp;
+								</td>
+								<td class=" sort">
+									项目经理&nbsp;
+								</td>
+							</tr>
+							<tr id="off-1003361026444277362" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('-1003361026444277362')"
+								onmouseout="removeEditImage('-1003361026444277362')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									范长建
+								</td>
+								<td class=" sort">
+									TC0202&nbsp;
+								</td>
+								<td class=" sort">
+									软件开发&nbsp;
+								</td>
+							</tr>
+							<tr id="off-5875084251907863524" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('-5875084251907863524')"
+								onmouseout="removeEditImage('-5875084251907863524')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									肖少华
+								</td>
+								<td class=" sort">
+									TC0202&nbsp;
+								</td>
+								<td class=" sort">
+									软件开发&nbsp;
+								</td>
+							</tr>
+							<tr id="off-4594509762829333797" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('-4594509762829333797')"
+								onmouseout="removeEditImage('-4594509762829333797')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									周传尧
+								</td>
+								<td class=" sort">
+									TC0202&nbsp;
+								</td>
+								<td class=" sort">
+									软件开发&nbsp;
+								</td>
+							</tr>
+							<tr id="off5592581662383752428" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('5592581662383752428')"
+								onmouseout="removeEditImage('5592581662383752428')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									李净
+								</td>
+								<td class=" sort">
+									TC0202&nbsp;
+								</td>
+								<td class=" sort">
+									软件开发&nbsp;
+								</td>
+							</tr>
+							<tr id="off5648850487519232896" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('5648850487519232896')"
+								onmouseout="removeEditImage('5648850487519232896')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									杨贺
+								</td>
+								<td class=" sort">
+									TC0202&nbsp;
+								</td>
+								<td class=" sort">
+									项目经理&nbsp;
+								</td>
+							</tr>
+							<tr id="off8161775251490030599" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('8161775251490030599')"
+								onmouseout="removeEditImage('8161775251490030599')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									彭静
+								</td>
+								<td class=" sort">
+									TC0102&nbsp;
+								</td>
+								<td class=" sort">
+									售前&nbsp;
+								</td>
+							</tr>
+							<tr id="off-3469542215002338190" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('-3469542215002338190')"
+								onmouseout="removeEditImage('-3469542215002338190')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									马悦
+								</td>
+								<td class=" sort">
+									TC0202&nbsp;
+								</td>
+								<td class=" sort">
+									软件开发&nbsp;
+								</td>
+							</tr>
+							<tr id="off797835828576078221" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('797835828576078221')"
+								onmouseout="removeEditImage('797835828576078221')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									曾现莽
+								</td>
+								<td class=" sort">
+									TC0202&nbsp;
+								</td>
+								<td class=" sort">
+									数据开发&nbsp;
+								</td>
+							</tr>
+							<tr id="off6249658149821760128" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('6249658149821760128')"
+								onmouseout="removeEditImage('6249658149821760128')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									刘超
+								</td>
+								<td class=" sort">
+									TC0202&nbsp;
+								</td>
+								<td class=" sort">
+									数据开发&nbsp;
+								</td>
+							</tr>
+							<tr id="off5828529993375238173" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('5828529993375238173')"
+								onmouseout="removeEditImage('5828529993375238173')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									刘明明
+								</td>
+								<td class=" sort">
+									TC0202&nbsp;
+								</td>
+								<td class=" sort">
+									软件开发&nbsp;
+								</td>
+							</tr>
+							<tr id="off-6464640908763970974" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('-6464640908763970974')"
+								onmouseout="removeEditImage('-6464640908763970974')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									孙源得
+								</td>
+								<td class=" sort">
+									TC0201&nbsp;
+								</td>
+								<td class=" sort">
+									软件运维&nbsp;
+								</td>
+							</tr>
+							<tr id="off2500842399806013666" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('2500842399806013666')"
+								onmouseout="removeEditImage('2500842399806013666')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									马成龙
+								</td>
+								<td class=" sort">
+									TC0202&nbsp;
+								</td>
+								<td class=" sort">
+									数据开发&nbsp;
+								</td>
+							</tr>
+							<tr id="off-8350789115811640096" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('-8350789115811640096')"
+								onmouseout="removeEditImage('-8350789115811640096')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									韩燕
+								</td>
+								<td class=" sort">
+									TC0202&nbsp;
+								</td>
+								<td class=" sort">
+									数据开发&nbsp;
+								</td>
+							</tr>
+							<tr id="off-2891850556332881559" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('-2891850556332881559')"
+								onmouseout="removeEditImage('-2891850556332881559')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									张晓康
+								</td>
+								<td class=" sort">
+									TC0202&nbsp;
+								</td>
+								<td class=" sort">
+									数据开发&nbsp;
+								</td>
+							</tr>
+							<tr id="off1267448645001956070" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('1267448645001956070')"
+								onmouseout="removeEditImage('1267448645001956070')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									朱金梅
+								</td>
+								<td class=" sort">
+									OGM&nbsp;
+								</td>
+								<td class=" sort">
+									劳务&nbsp;
+								</td>
+							</tr>
+							<tr id="off-7604862577326209418" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('-7604862577326209418')"
+								onmouseout="removeEditImage('-7604862577326209418')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									顾剑锋
+								</td>
+								<td class=" sort">
+									OGM&nbsp;
+								</td>
+								<td class=" sort">
+									司机&nbsp;
+								</td>
+							</tr>
+							<tr id="off-5221916882790625445" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('-5221916882790625445')"
+								onmouseout="removeEditImage('-5221916882790625445')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									朱翔彬
+								</td>
+								<td class=" sort">
+									TC0201&nbsp;
+								</td>
+								<td class=" sort">
+									软件运维&nbsp;
+								</td>
+							</tr>
+							<tr id="off-8644975354927234893" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('-8644975354927234893')"
+								onmouseout="removeEditImage('-8644975354927234893')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									朱铭杰
+								</td>
+								<td class=" sort">
+									TC0202&nbsp;
+								</td>
+								<td class=" sort">
+									软件开发&nbsp;
+								</td>
+							</tr>
+							<tr id="off-7703347568690839535" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('-7703347568690839535')"
+								onmouseout="removeEditImage('-7703347568690839535')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									刘建亮
+								</td>
+								<td class=" sort">
+									BMC01&nbsp;
+								</td>
+								<td class=" sort">
+									销售主管&nbsp;
+								</td>
+							</tr>
+							<tr id="off-9182149044332572679" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('-9182149044332572679')"
+								onmouseout="removeEditImage('-9182149044332572679')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									吕扬
+								</td>
+								<td class=" sort">
+									TC0202&nbsp;
+								</td>
+								<td class=" sort">
+									系统运维&nbsp;
+								</td>
+							</tr>
+							<tr id="off-4972945882039038269" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('-4972945882039038269')"
+								onmouseout="removeEditImage('-4972945882039038269')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									崔世强
+								</td>
+								<td class=" sort">
+									TC0202&nbsp;
+								</td>
+								<td class=" sort">
+									软件开发&nbsp;
+								</td>
+							</tr>
+							<tr id="off6398104308785170832" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('6398104308785170832')"
+								onmouseout="removeEditImage('6398104308785170832')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									夏中华
+								</td>
+								<td class=" sort">
+									TC0202&nbsp;
+								</td>
+								<td class=" sort">
+									软件开发&nbsp;
+								</td>
+							</tr>
+							<tr id="off-8367623496295888537" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('-8367623496295888537')"
+								onmouseout="removeEditImage('-8367623496295888537')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									张荣臻
+								</td>
+								<td class=" sort">
+									TC0202&nbsp;
+								</td>
+								<td class=" sort">
+									软件开发&nbsp;
+								</td>
+							</tr>
+							<tr id="off-2510573759067108176" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('-2510573759067108176')"
+								onmouseout="removeEditImage('-2510573759067108176')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									杨新宇
+								</td>
+								<td class=" sort">
+									TC0201&nbsp;
+								</td>
+								<td class=" sort">
+									售前&nbsp;
+								</td>
+							</tr>
+							<tr id="off5961538330651806480" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('5961538330651806480')"
+								onmouseout="removeEditImage('5961538330651806480')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									黄静
+								</td>
+								<td class=" sort">
+									TC0202&nbsp;
+								</td>
+								<td class=" sort">
+									软件开发&nbsp;
+								</td>
+							</tr>
+							<tr id="off602172043466588908" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('602172043466588908')"
+								onmouseout="removeEditImage('602172043466588908')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									叶存千
+								</td>
+								<td class=" sort">
+									TC0202&nbsp;
+								</td>
+								<td class=" sort">
+									软件开发&nbsp;
+								</td>
+							</tr>
+							<tr id="off-9104936954639136717" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('-9104936954639136717')"
+								onmouseout="removeEditImage('-9104936954639136717')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									吴其岳
+								</td>
+								<td class=" sort">
+									TC0202&nbsp;
+								</td>
+								<td class=" sort">
+									软件测试&nbsp;
+								</td>
+							</tr>
+							<tr id="off-6098200906775704829" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('-6098200906775704829')"
+								onmouseout="removeEditImage('-6098200906775704829')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									徐康
+								</td>
+								<td class=" sort">
+									TC0202&nbsp;
+								</td>
+								<td class=" sort">
+									软件开发&nbsp;
+								</td>
+							</tr>
+							<tr id="off3239904714335538326" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('3239904714335538326')"
+								onmouseout="removeEditImage('3239904714335538326')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									范嘉洋
+								</td>
+								<td class=" sort">
+									TC0201&nbsp;
+								</td>
+								<td class=" sort">
+									数据开发&nbsp;
+								</td>
+							</tr>
+							<tr id="off-6193579309866922440" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('-6193579309866922440')"
+								onmouseout="removeEditImage('-6193579309866922440')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									刘超帅
+								</td>
+								<td class=" sort">
+									TC0202&nbsp;
+								</td>
+								<td class=" sort">
+									软件测试&nbsp;
+								</td>
+							</tr>
+							<tr id="off658742872363321465" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('658742872363321465')"
+								onmouseout="removeEditImage('658742872363321465')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									余超
+								</td>
+								<td class=" sort">
+									TC0202&nbsp;
+								</td>
+								<td class=" sort">
+									软件开发&nbsp;
+								</td>
+							</tr>
+							<tr id="off2627582378334308442" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('2627582378334308442')"
+								onmouseout="removeEditImage('2627582378334308442')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									胡飞
+								</td>
+								<td class=" sort">
+									TC0202&nbsp;
+								</td>
+								<td class=" sort">
+									软件开发&nbsp;
+								</td>
+							</tr>
+							<tr id="off-4985547240657891537" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('-4985547240657891537')"
+								onmouseout="removeEditImage('-4985547240657891537')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									张发伟
+								</td>
+								<td class=" sort">
+									TC0202&nbsp;
+								</td>
+								<td class=" sort">
+									算法/人工智能研发&nbsp;
+								</td>
+							</tr>
+							<tr id="off-8205019327534511689" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('-8205019327534511689')"
+								onmouseout="removeEditImage('-8205019327534511689')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									陈锦贤
+								</td>
+								<td class=" sort">
+									TC0202&nbsp;
+								</td>
+								<td class=" sort">
+									软件开发&nbsp;
+								</td>
+							</tr>
+							<tr id="off7195905502120854700" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('7195905502120854700')"
+								onmouseout="removeEditImage('7195905502120854700')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									童浩然
+								</td>
+								<td class=" sort">
+									TC0202&nbsp;
+								</td>
+								<td class=" sort">
+									软件开发&nbsp;
+								</td>
+							</tr>
+							<tr id="off2359241794600059178" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('2359241794600059178')"
+								onmouseout="removeEditImage('2359241794600059178')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									顾逸尘
+								</td>
+								<td class=" sort">
+									BMC01&nbsp;
+								</td>
+								<td class=" sort">
+									销售&nbsp;
+								</td>
+							</tr>
+							<tr id="off-4711478920324036193" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('-4711478920324036193')"
+								onmouseout="removeEditImage('-4711478920324036193')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									宋永宸
+								</td>
+								<td class=" sort">
+									TC0202&nbsp;
+								</td>
+								<td class=" sort">
+									数据开发&nbsp;
+								</td>
+							</tr>
+							<tr id="off5741431109352508739" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('5741431109352508739')"
+								onmouseout="removeEditImage('5741431109352508739')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									张镭鑫
+								</td>
+								<td class=" sort">
+									TC0201&nbsp;
+								</td>
+								<td class=" sort">
+									需求实施&nbsp;
+								</td>
+							</tr>
+							<tr id="off3032955958443329322" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('3032955958443329322')"
+								onmouseout="removeEditImage('3032955958443329322')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									沈肖剑
+								</td>
+								<td class=" sort">
+									TC0202&nbsp;
+								</td>
+								<td class=" sort">
+									软件开发&nbsp;
+								</td>
+							</tr>
+							<tr id="off2697912420919558160" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('2697912420919558160')"
+								onmouseout="removeEditImage('2697912420919558160')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									方嘉豪
+								</td>
+								<td class=" sort">
+									TC0202&nbsp;
+								</td>
+								<td class=" sort">
+									软件开发&nbsp;
+								</td>
+							</tr>
+							<tr id="off7875880065276724991" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('7875880065276724991')"
+								onmouseout="removeEditImage('7875880065276724991')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									赵维陈
+								</td>
+								<td class=" sort">
+									TC0202&nbsp;
+								</td>
+								<td class=" sort">
+									软件开发&nbsp;
+								</td>
+							</tr>
+							<tr id="off-5116628630399334499" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('-5116628630399334499')"
+								onmouseout="removeEditImage('-5116628630399334499')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									吴乐涵
+								</td>
+								<td class=" sort">
+									TC0201&nbsp;
+								</td>
+								<td class=" sort">
+									软件开发&nbsp;
+								</td>
+							</tr>
+							<tr id="off-5970718983723725599" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('-5970718983723725599')"
+								onmouseout="removeEditImage('-5970718983723725599')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									吴锐
+								</td>
+								<td class=" sort">
+									TC0201&nbsp;
+								</td>
+								<td class=" sort">
+									需求实施&nbsp;
+								</td>
+							</tr>
+							<tr id="off8165082831594670344" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('8165082831594670344')"
+								onmouseout="removeEditImage('8165082831594670344')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									杨昌昊
+								</td>
+								<td class=" sort">
+									TC0202&nbsp;
+								</td>
+								<td class=" sort">
+									产品经理&nbsp;
+								</td>
+							</tr>
+							<tr id="off-615682507425953547" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('-615682507425953547')"
+								onmouseout="removeEditImage('-615682507425953547')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									孟云鹏
+								</td>
+								<td class=" sort">
+									TC0202&nbsp;
+								</td>
+								<td class=" sort">
+									产品经理&nbsp;
+								</td>
+							</tr>
+							<tr id="off5542969531781039779" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('5542969531781039779')"
+								onmouseout="removeEditImage('5542969531781039779')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									江永辉
+								</td>
+								<td class=" sort">
+									TC0202&nbsp;
+								</td>
+								<td class=" sort">
+									算法/人工智能研发&nbsp;
+								</td>
+							</tr>
+							<tr id="off-5882515231118045270" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('-5882515231118045270')"
+								onmouseout="removeEditImage('-5882515231118045270')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									吕苏颖
+								</td>
+								<td class=" sort">
+									TC0202&nbsp;
+								</td>
+								<td class=" sort">
+									数据开发&nbsp;
+								</td>
+							</tr>
+							<tr id="off-372338941668340776" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('-372338941668340776')"
+								onmouseout="removeEditImage('-372338941668340776')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									曹广强
+								</td>
+								<td class=" sort">
+									TC0202&nbsp;
+								</td>
+								<td class=" sort">
+									软件测试&nbsp;
+								</td>
+							</tr>
+							<tr id="off8664323295258495139" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('8664323295258495139')"
+								onmouseout="removeEditImage('8664323295258495139')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									陈义洋
+								</td>
+								<td class=" sort">
+									TC0202&nbsp;
+								</td>
+								<td class=" sort">
+									软件开发&nbsp;
+								</td>
+							</tr>
+							<tr id="off-7133292304253435330" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('-7133292304253435330')"
+								onmouseout="removeEditImage('-7133292304253435330')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									仝文凯
+								</td>
+								<td class=" sort">
+									TC0202&nbsp;
+								</td>
+								<td class=" sort">
+									软件开发&nbsp;
+								</td>
+							</tr>
+							<tr id="off4446276307701025483" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('4446276307701025483')"
+								onmouseout="removeEditImage('4446276307701025483')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									余婷娜
+								</td>
+								<td class=" sort">
+									TC0202&nbsp;
+								</td>
+								<td class=" sort">
+									软件开发&nbsp;
+								</td>
+							</tr>
+							<tr id="off5356170516859339452" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('5356170516859339452')"
+								onmouseout="removeEditImage('5356170516859339452')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									黄彧霖
+								</td>
+								<td class=" sort">
+									TC0202&nbsp;
+								</td>
+								<td class=" sort">
+									数据开发&nbsp;
+								</td>
+							</tr>
+							<tr id="off-2145675892782314892" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('-2145675892782314892')"
+								onmouseout="removeEditImage('-2145675892782314892')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									董海风
+								</td>
+								<td class=" sort">
+									TC0202&nbsp;
+								</td>
+								<td class=" sort">
+									软件测试&nbsp;
+								</td>
+							</tr>
+							<tr id="off-4030682866076203443" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('-4030682866076203443')"
+								onmouseout="removeEditImage('-4030682866076203443')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									柴鸿律
+								</td>
+								<td class=" sort">
+									TC0201&nbsp;
+								</td>
+								<td class=" sort">
+									软件运维&nbsp;
+								</td>
+							</tr>
+							<tr id="off7584749115709736107" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('7584749115709736107')"
+								onmouseout="removeEditImage('7584749115709736107')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									倪浩立
+								</td>
+								<td class=" sort">
+									TC0201&nbsp;
+								</td>
+								<td class=" sort">
+									大数据专家服务&nbsp;
+								</td>
+							</tr>
+							<tr id="off181071177076129922" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('181071177076129922')"
+								onmouseout="removeEditImage('181071177076129922')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									于龙
+								</td>
+								<td class=" sort">
+									TC0202&nbsp;
+								</td>
+								<td class=" sort">
+									软件开发&nbsp;
+								</td>
+							</tr>
+							<tr id="off6805637408054002769" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('6805637408054002769')"
+								onmouseout="removeEditImage('6805637408054002769')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									张文
+								</td>
+								<td class=" sort">
+									TC0202&nbsp;
+								</td>
+								<td class=" sort">
+									软件开发&nbsp;
+								</td>
+							</tr>
+							<tr id="off8311152163229090103" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('8311152163229090103')"
+								onmouseout="removeEditImage('8311152163229090103')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									钱杰
+								</td>
+								<td class=" sort">
+									BMC01&nbsp;
+								</td>
+								<td class=" sort">
+									销售&nbsp;
+								</td>
+							</tr>
+							<tr id="off6255256023563390267" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('6255256023563390267')"
+								onmouseout="removeEditImage('6255256023563390267')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									李丽鑫
+								</td>
+								<td class=" sort">
+									OGM&nbsp;
+								</td>
+								<td class=" sort">
+									未知&nbsp;
+								</td>
+							</tr>
+							<tr id="off-1224181386035704626" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('-1224181386035704626')"
+								onmouseout="removeEditImage('-1224181386035704626')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									蒋红洋
+								</td>
+								<td class=" sort">
+									TC0202&nbsp;
+								</td>
+								<td class=" sort">
+									软件开发&nbsp;
+								</td>
+							</tr>
+							<tr id="off-6252567575755272410" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('-6252567575755272410')"
+								onmouseout="removeEditImage('-6252567575755272410')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									武亦雯
+								</td>
+								<td class=" sort">
+									TSC&nbsp;
+								</td>
+								<td class=" sort">
+									实习生&nbsp;
+								</td>
+							</tr>
+							<tr id="off-1973949066792383752" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('-1973949066792383752')"
+								onmouseout="removeEditImage('-1973949066792383752')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									刘晨
+								</td>
+								<td class=" sort">
+									TC0202&nbsp;
+								</td>
+								<td class=" sort">
+									软件测试&nbsp;
+								</td>
+							</tr>
+							<tr id="off-3607654713545700471" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('-3607654713545700471')"
+								onmouseout="removeEditImage('-3607654713545700471')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									李鹏
+								</td>
+								<td class=" sort">
+									TC0202&nbsp;
+								</td>
+								<td class=" sort">
+									数据开发&nbsp;
+								</td>
+							</tr>
+							<tr id="off5248565161730132970" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('5248565161730132970')"
+								onmouseout="removeEditImage('5248565161730132970')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									朱云鹤
+								</td>
+								<td class=" sort">
+									TC0202&nbsp;
+								</td>
+								<td class=" sort">
+									数据开发&nbsp;
+								</td>
+							</tr>
+							<tr id="off-5579127403025512099" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('-5579127403025512099')"
+								onmouseout="removeEditImage('-5579127403025512099')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									周亚宁
+								</td>
+								<td class=" sort">
+									TC0201&nbsp;
+								</td>
+								<td class=" sort">
+									需求实施&nbsp;
+								</td>
+							</tr>
+							<tr id="off646872260604084481" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('646872260604084481')"
+								onmouseout="removeEditImage('646872260604084481')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									薛模婧
+								</td>
+								<td class=" sort">
+									TC0102&nbsp;
+								</td>
+								<td class=" sort">
+									需求实施&nbsp;
+								</td>
+							</tr>
+							<tr id="off4178009712621209036" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('4178009712621209036')"
+								onmouseout="removeEditImage('4178009712621209036')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									李建华
+								</td>
+								<td class=" sort">
+									TC0201&nbsp;
+								</td>
+								<td class=" sort">
+									软件开发&nbsp;
+								</td>
+							</tr>
+							<tr id="off7806654128237790129" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('7806654128237790129')"
+								onmouseout="removeEditImage('7806654128237790129')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									章智勇
+								</td>
+								<td class=" sort">
+									TC0202&nbsp;
+								</td>
+								<td class=" sort">
+									数据开发&nbsp;
+								</td>
+							</tr>
+							<tr id="off-8571226775537103802" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('-8571226775537103802')"
+								onmouseout="removeEditImage('-8571226775537103802')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									杨倩倩
+								</td>
+								<td class=" sort">
+									TC0202&nbsp;
+								</td>
+								<td class=" sort">
+									前端开发&nbsp;
+								</td>
+							</tr>
+							<tr id="off5020242703726956443" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('5020242703726956443')"
+								onmouseout="removeEditImage('5020242703726956443')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									田成祥
+								</td>
+								<td class=" sort">
+									TC0202&nbsp;
+								</td>
+								<td class=" sort">
+									软件开发&nbsp;
+								</td>
+							</tr>
+							<tr id="off-5272744190599083114" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('-5272744190599083114')"
+								onmouseout="removeEditImage('-5272744190599083114')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									王寅初
+								</td>
+								<td class=" sort">
+									TC0202&nbsp;
+								</td>
+								<td class=" sort">
+									数据开发&nbsp;
+								</td>
+							</tr>
+							<tr id="off194389438086467244" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('194389438086467244')"
+								onmouseout="removeEditImage('194389438086467244')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									樊旺
+								</td>
+								<td class=" sort">
+									TC0201&nbsp;
+								</td>
+								<td class=" sort">
+									软件开发&nbsp;
+								</td>
+							</tr>
+							<tr id="off-8407091901996318101" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('-8407091901996318101')"
+								onmouseout="removeEditImage('-8407091901996318101')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									张文杰
+								</td>
+								<td class=" sort">
+									TC0202&nbsp;
+								</td>
+								<td class=" sort">
+									软件开发&nbsp;
+								</td>
+							</tr>
+							<tr id="off-4667932616947382418" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('-4667932616947382418')"
+								onmouseout="removeEditImage('-4667932616947382418')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									叶照芳
+								</td>
+								<td class=" sort">
+									OGM&nbsp;
+								</td>
+								<td class=" sort">
+									劳务&nbsp;
+								</td>
+							</tr>
+							<tr id="off-2100489545666114752" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('-2100489545666114752')"
+								onmouseout="removeEditImage('-2100489545666114752')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									朱银明
+								</td>
+								<td class=" sort">
+									TC0202&nbsp;
+								</td>
+								<td class=" sort">
+									项目经理&nbsp;
+								</td>
+							</tr>
+							<tr id="off165230323886083076" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('165230323886083076')"
+								onmouseout="removeEditImage('165230323886083076')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									白鹤鸣
+								</td>
+								<td class=" sort">
+									TC0202&nbsp;
+								</td>
+								<td class=" sort">
+									前端开发&nbsp;
+								</td>
+							</tr>
+							<tr id="off492373444244619817" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('492373444244619817')"
+								onmouseout="removeEditImage('492373444244619817')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									韩晶晶
+								</td>
+								<td class=" sort">
+									TC0201&nbsp;
+								</td>
+								<td class=" sort">
+									软件开发&nbsp;
+								</td>
+							</tr>
+							<tr id="off-1734362324076048576" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('-1734362324076048576')"
+								onmouseout="removeEditImage('-1734362324076048576')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									曹凯旋
+								</td>
+								<td class=" sort">
+									BMC01&nbsp;
+								</td>
+								<td class=" sort">
+									销售&nbsp;
+								</td>
+							</tr>
+							<tr id="off-6379492201787537908" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('-6379492201787537908')"
+								onmouseout="removeEditImage('-6379492201787537908')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									高超
+								</td>
+								<td class=" sort">
+									TC0202&nbsp;
+								</td>
+								<td class=" sort">
+									算法/人工智能研发&nbsp;
+								</td>
+							</tr>
+							<tr id="off6272951901748151770" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('6272951901748151770')"
+								onmouseout="removeEditImage('6272951901748151770')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									曹硕
+								</td>
+								<td class=" sort">
+									TC0202&nbsp;
+								</td>
+								<td class=" sort">
+									算法/人工智能研发&nbsp;
+								</td>
+							</tr>
+							<tr id="off6331395028998832542" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('6331395028998832542')"
+								onmouseout="removeEditImage('6331395028998832542')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									张潇媛
+								</td>
+								<td class=" sort">
+									BMC01&nbsp;
+								</td>
+								<td class=" sort">
+									销售&nbsp;
+								</td>
+							</tr>
+							<tr id="off7548253528653578792" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('7548253528653578792')"
+								onmouseout="removeEditImage('7548253528653578792')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									邵子康
+								</td>
+								<td class=" sort">
+									TC0202&nbsp;
+								</td>
+								<td class=" sort">
+									产品经理&nbsp;
+								</td>
+							</tr>
+							<tr id="off-2667540210321832934" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('-2667540210321832934')"
+								onmouseout="removeEditImage('-2667540210321832934')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									崔兵
+								</td>
+								<td class=" sort">
+									TC0202&nbsp;
+								</td>
+								<td class=" sort">
+									软件测试&nbsp;
+								</td>
+							</tr>
+							<tr id="off-387390813119364003" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('-387390813119364003')"
+								onmouseout="removeEditImage('-387390813119364003')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									陈浩楠
+								</td>
+								<td class=" sort">
+									TC0202&nbsp;
+								</td>
+								<td class=" sort">
+									软件开发&nbsp;
+								</td>
+							</tr>
+							<tr id="off6602145720670900171" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('6602145720670900171')"
+								onmouseout="removeEditImage('6602145720670900171')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									方妍
+								</td>
+								<td class=" sort">
+									TC0202&nbsp;
+								</td>
+								<td class=" sort">
+									数据开发&nbsp;
+								</td>
+							</tr>
+							<tr id="off3810063276541693245" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('3810063276541693245')"
+								onmouseout="removeEditImage('3810063276541693245')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									许哲
+								</td>
+								<td class=" sort">
+									TC0202&nbsp;
+								</td>
+								<td class=" sort">
+									数据开发&nbsp;
+								</td>
+							</tr>
+							<tr id="off4347043680523404483" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('4347043680523404483')"
+								onmouseout="removeEditImage('4347043680523404483')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									曹聪
+								</td>
+								<td class=" sort">
+									TC0202&nbsp;
+								</td>
+								<td class=" sort">
+									数据开发&nbsp;
+								</td>
+							</tr>
+							<tr id="off-3435087803344404068" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('-3435087803344404068')"
+								onmouseout="removeEditImage('-3435087803344404068')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									徐翔
+								</td>
+								<td class=" sort">
+									TC0202&nbsp;
+								</td>
+								<td class=" sort">
+									软件开发&nbsp;
+								</td>
+							</tr>
+							<tr id="off4985472906443245139" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('4985472906443245139')"
+								onmouseout="removeEditImage('4985472906443245139')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									龙永康
+								</td>
+								<td class=" sort">
+									TC0202&nbsp;
+								</td>
+								<td class=" sort">
+									数据开发&nbsp;
+								</td>
+							</tr>
+							<tr id="off3939696958777608625" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('3939696958777608625')"
+								onmouseout="removeEditImage('3939696958777608625')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									巩申奥
+								</td>
+								<td class=" sort">
+									TC0202&nbsp;
+								</td>
+								<td class=" sort">
+									数据开发&nbsp;
+								</td>
+							</tr>
+							<tr id="off-7120221121873558744" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('-7120221121873558744')"
+								onmouseout="removeEditImage('-7120221121873558744')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									王康
+								</td>
+								<td class=" sort">
+									TC0202&nbsp;
+								</td>
+								<td class=" sort">
+									软件开发&nbsp;
+								</td>
+							</tr>
+							<tr id="off-4140450294525705497" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('-4140450294525705497')"
+								onmouseout="removeEditImage('-4140450294525705497')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									王子都
+								</td>
+								<td class=" sort">
+									TC0201&nbsp;
+								</td>
+								<td class=" sort">
+									实习生&nbsp;
+								</td>
+							</tr>
+							<tr id="off-1954233209907297016" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('-1954233209907297016')"
+								onmouseout="removeEditImage('-1954233209907297016')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									彭博栩
+								</td>
+								<td class=" sort">
+									TSC&nbsp;
+								</td>
+								<td class=" sort">
+									实习生&nbsp;
+								</td>
+							</tr>
+							<tr id="off-6727978338823354304" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('-6727978338823354304')"
+								onmouseout="removeEditImage('-6727978338823354304')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									陆佳楠
+								</td>
+								<td class=" sort">
+									PSC&nbsp;
+								</td>
+								<td class=" sort">
+									售前&nbsp;
+								</td>
+							</tr>
+							<tr id="off5497673956411199130" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('5497673956411199130')"
+								onmouseout="removeEditImage('5497673956411199130')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									向凯
+								</td>
+								<td class=" sort">
+									TC0202&nbsp;
+								</td>
+								<td class=" sort">
+									算法/人工智能研发&nbsp;
+								</td>
+							</tr>
+							<tr id="off-8484401723051127989" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('-8484401723051127989')"
+								onmouseout="removeEditImage('-8484401723051127989')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									潘宇
+								</td>
+								<td class=" sort">
+									TC0202&nbsp;
+								</td>
+								<td class=" sort">
+									产品经理&nbsp;
+								</td>
+							</tr>
+							<tr id="off-3612539233492186839" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('-3612539233492186839')"
+								onmouseout="removeEditImage('-3612539233492186839')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									王运娣
+								</td>
+								<td class=" sort">
+									TC0202&nbsp;
+								</td>
+								<td class=" sort">
+									软件测试&nbsp;
+								</td>
+							</tr>
+							<tr id="off-8085545456322065444" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('-8085545456322065444')"
+								onmouseout="removeEditImage('-8085545456322065444')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									汪智玉
+								</td>
+								<td class=" sort">
+									TC0202&nbsp;
+								</td>
+								<td class=" sort">
+									前端开发&nbsp;
+								</td>
+							</tr>
+							<tr id="off7266161802403401322" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('7266161802403401322')"
+								onmouseout="removeEditImage('7266161802403401322')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									夏俊清
+								</td>
+								<td class=" sort">
+									TC0202&nbsp;
+								</td>
+								<td class=" sort">
+									算法/人工智能研发&nbsp;
+								</td>
+							</tr>
+							<tr id="off7126299219101109447" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('7126299219101109447')"
+								onmouseout="removeEditImage('7126299219101109447')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									黄跃
+								</td>
+								<td class=" sort">
+									TC0202&nbsp;
+								</td>
+								<td class=" sort">
+									算法/人工智能研发&nbsp;
+								</td>
+							</tr>
+							<tr id="off8399898109403546633" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('8399898109403546633')"
+								onmouseout="removeEditImage('8399898109403546633')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									钱莉
+								</td>
+								<td class=" sort">
+									TC0202&nbsp;
+								</td>
+								<td class=" sort">
+									产品经理&nbsp;
+								</td>
+							</tr>
+							<tr id="off-1676205682969590094" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('-1676205682969590094')"
+								onmouseout="removeEditImage('-1676205682969590094')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									陶旺旺
+								</td>
+								<td class=" sort">
+									TC0202&nbsp;
+								</td>
+								<td class=" sort">
+									数据开发&nbsp;
+								</td>
+							</tr>
+							<tr id="off7388225914625871525" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('7388225914625871525')"
+								onmouseout="removeEditImage('7388225914625871525')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									廖斌
+								</td>
+								<td class=" sort">
+									TC0202&nbsp;
+								</td>
+								<td class=" sort">
+									数据开发&nbsp;
+								</td>
+							</tr>
+							<tr id="off-4523072747208750017" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('-4523072747208750017')"
+								onmouseout="removeEditImage('-4523072747208750017')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									蒋绪东
+								</td>
+								<td class=" sort">
+									TC0202&nbsp;
+								</td>
+								<td class=" sort">
+									数据开发&nbsp;
+								</td>
+							</tr>
+							<tr id="off-2577382958100560566" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('-2577382958100560566')"
+								onmouseout="removeEditImage('-2577382958100560566')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									唐贺
+								</td>
+								<td class=" sort">
+									TC0202&nbsp;
+								</td>
+								<td class=" sort">
+									数据开发&nbsp;
+								</td>
+							</tr>
+							<tr id="off-6949532801377090340" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('-6949532801377090340')"
+								onmouseout="removeEditImage('-6949532801377090340')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									刘新宇
+								</td>
+								<td class=" sort">
+									TC0202&nbsp;
+								</td>
+								<td class=" sort">
+									数据开发&nbsp;
+								</td>
+							</tr>
+							<tr id="off-104592831910949898" height="25" class="sort cursor-hand offline" onclick=""
+								ondblclick="" onmouseover="showEditImage('-104592831910949898')"
+								onmouseout="removeEditImage('-104592831910949898')">
+								<td align="center" class="sort">
+									<span class="pcOffline"></span>
+								</td>
+								<td class="sort">
+									杨佳钰
+								</td>
+								<td class=" sort">
+									TC0202&nbsp;
+								</td>
+								<td class=" sort">
+									HRBP&nbsp;
+								</td>
+							</tr>
+						</tbody>
+					</table>
+				</td>
+			</tr>
+		</table>
+		<div class="watermarkMask" style="display: none;" watermarkMask="true"></div>
+	</div>
+</body>
+</html>

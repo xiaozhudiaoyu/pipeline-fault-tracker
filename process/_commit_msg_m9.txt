@@ -1,0 +1,9 @@
+chore(deploy): M9 完善 Docker 部署与初始管理员脚本
+
+- docker-compose.yml：默认形态改回 SQLite（backend + frontend 两服务），数据落 named volume pft-data；PostgreSQL 形态独立到 docker-compose.pg.yml
+- 根 .env / .env.example：新增 compose 插值层变量，SECRET_KEY 用 ${SECRET_KEY:?} 强制，缺失直接报错拒绝启动，不回退代码里的开发默认密钥
+- backend/Dockerfile：seed.py / create_admin.py 一并 COPY 进镜像供一次性命令调用；entrypoint.sh 先 sed 去 Windows 带入的 CR 再赋可执行位；ENTRYPOINT 负责迁移后起服务，CMD 保留默认启动命令
+- backend/entrypoint.sh：容器启动先 alembic upgrade head 再起 uvicorn（迁移幂等）
+- backend/create_admin.py + app/config.py：初始管理员账号、密码可配置（环境变量 > backend/.env），不给口令即中止、同名账号已存在则跳过不重置密码，不内置默认口令
+- backend/.env.example：补 ADMIN_USERNAME / ADMIN_PASSWORD / ADMIN_DISPLAY_NAME 说明
+- README：新增 Docker 部署章节（前置密钥、启动、创建初始管理员与演示数据、PG 切换、停止日志备份）及本地安装小节

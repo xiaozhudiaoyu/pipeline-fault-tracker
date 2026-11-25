@@ -1,0 +1,6 @@
+feat(backend): 现场照片改由编辑删除并支持修改发生时间
+
+- FaultUpdate 新增 occurred_at（拒显式 null/未来，同登记口径）与 remove_attachment_ids
+- update_fault 白名单扩 occurred_at，并按 remove_attachment_ids 从 attachments 集合级联删除现场图片（先库后盘 unlink）
+- 移除独立 DELETE /api/attachments/{id} 端点，删除权限统一到 PATCH 编辑门槛（pending + 创建人/admin）
+- 重写 N5/P2/P3 并新增 U1~U4 覆盖编辑删除、越权与 occurred_at 校验

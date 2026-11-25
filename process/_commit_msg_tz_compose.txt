@@ -1,0 +1,5 @@
+chore(docker): backend 容器显式设置 TZ=Asia/Shanghai
+
+部署层附带项：与代码层业务时区口径（BUSINESS_UTC_OFFSET_HOURS）对齐，
+消除日志与数据库 func.now() 之外的进程时区歧义。不写这一行应用也不再
+报错——那正是 fix(time) 的修复目标，此行仅作口径冗余保险。

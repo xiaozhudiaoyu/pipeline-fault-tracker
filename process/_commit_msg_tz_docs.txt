@@ -1,0 +1,4 @@
+docs(readme): 补 BUSINESS_UTC_OFFSET_HOURS 配置项与存量数据口径已知问题
+
+README 配置表与已知问题、guide_file/docker.md 12.8 同步记录时区修复的
+部署口径：存量 created_at 早 8 小时属历史数据，按裁定不修补。
